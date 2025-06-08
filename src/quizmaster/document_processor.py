@@ -7,6 +7,15 @@ from bs4 import BeautifulSoup
 import requests
 import re
 from chroma_manager import ChromaManager
+import logging
+
+# Configure logging to suppress pdfminer warnings
+pdfminer_logger = logging.getLogger('pdfminer')
+pdfminer_logger.setLevel(logging.ERROR)
+
+# Specifically suppress pdfminer.pdfpage warnings
+pdfpage_logger = logging.getLogger('pdfminer.pdfpage')
+pdfpage_logger.setLevel(logging.ERROR)
 
 class DocumentProcessor:
     def __init__(self, persist_directory: str = "chroma_db"):

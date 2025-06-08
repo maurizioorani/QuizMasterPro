@@ -1,4 +1,15 @@
 import streamlit as st
+import sys
+import os
+
+# Add parent directory to path to enable relative imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+grandparent_dir = os.path.dirname(parent_dir)
+sys.path.append(grandparent_dir)
+
+from quizmaster.database_manager import DatabaseManager
+from quizmaster.insights_generator import generate_insights
 
 def show_quiz_page():
     st.set_page_config(
@@ -169,17 +180,40 @@ def show_quiz_page():
         
         answered_questions = 0
         correct_answers = 0
+        gradable_questions = 0
         
+        # Prepare data for saving
+        results = {
+            'total_questions': len(questions),
+            'answered_questions': 0,
+            'correct_answers': 0,
+            'completion_rate': 0,
+            'score': 0
+        }
+        
+        # Create list of questions for insight generation
+        insight_questions = []
+        
+        # First pass: collect data for insights and results
         for i, q_data in enumerate(questions):
             q_key = f"q_{i}"
             user_ans_val = st.session_state.user_answers.get(q_key)
-
-            if user_ans_val is not None: # Considers any answer attempt
-                 if not (isinstance(user_ans_val, str) and not user_ans_val.strip()): # Not an empty string
-                    answered_questions +=1
+            insight_q = {
+                'text': q_data['text'],
+                'type': q_data['type'],
+                'user_answer': user_ans_val,
+                'correct_answer': q_data['answer'],
+                'is_correct': False
+            }
+            
+            if user_ans_val is not None:
+                if not (isinstance(user_ans_val, str) and not user_ans_val.strip()):
+                    answered_questions += 1
+                    results['answered_questions'] = answered_questions
 
             # Check correctness for auto-gradable types
             if q_data['type'] != "Open-Ended" and user_ans_val is not None:
+                gradable_questions += 1
                 q_correct_answer = q_data['answer']
                 is_q_correct = False
                 if q_data['type'] == "Multiple Choice":
@@ -192,26 +226,43 @@ def show_quiz_page():
                             break
                     if user_choice_text == actual_correct_text:
                         is_q_correct = True
+                        correct_answers += 1
                 elif q_data['type'] == "True/False":
                     if str(user_ans_val).lower() == str(q_correct_answer).lower():
                         is_q_correct = True
+                        correct_answers += 1
                 elif q_data['type'] == "Fill-in-the-Blank":
                     if str(user_ans_val).strip().lower() == str(q_correct_answer).strip().lower():
                         is_q_correct = True
+                        correct_answers += 1
                 
-                if is_q_correct:
-                    correct_answers +=1
-
+                insight_q['is_correct'] = is_q_correct
+                
+            insight_questions.append(insight_q)
+        
+        results['correct_answers'] = correct_answers
         completion_rate = (answered_questions / len(questions)) * 100 if questions else 0
-        score = (correct_answers / len([q for q in questions if q['type'] != "Open-Ended"])) * 100 if len([q for q in questions if q['type'] != "Open-Ended"]) > 0 else 0
-
+        score = (correct_answers / gradable_questions) * 100 if gradable_questions > 0 else 0
+        results['completion_rate'] = completion_rate
+        results['score'] = score
+        
+        # Save results to database
+        db = DatabaseManager()
+        session_id = db.save_quiz_session(quiz_data, results)
+        db.save_quiz_answers(session_id, questions, st.session_state.user_answers)
+        
+        # Generate insights
+        model_used_for_quiz = quiz_data.get('model_used', 'llama3') # Default to llama3 if not found
+        insights = generate_insights(insight_questions, model_used_for_quiz)
+        db.save_quiz_report(session_id, insights)
+        
+        # Display results
         col1_res, col2_res, col3_res = st.columns(3)
         with col1_res:
             st.metric("Questions Answered", f"{answered_questions}/{len(questions)}")
         with col2_res:
             st.metric("Completion Rate", f"{completion_rate:.1f}%")
         # Only show score if there are gradable questions
-        gradable_questions = sum(1 for q in questions if q['type'] != "Open-Ended")
         if gradable_questions > 0:
             with col3_res:
                  st.metric("Score (Auto-graded)", f"{score:.1f}% ({correct_answers}/{gradable_questions})")
@@ -220,6 +271,13 @@ def show_quiz_page():
                 st.write("No auto-gradable questions.")
 
         st.metric("Model Used for Quiz Generation", quiz_data['model_used'])
+        
+        # Display insights
+        st.divider()
+        st.header("📊 Knowledge Insights")
+        st.write(insights)
+        
+        st.divider()
         
         if st.button("🔄 Take Quiz Again"):
             st.session_state.current_question = 0

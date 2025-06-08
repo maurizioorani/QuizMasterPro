@@ -201,45 +201,91 @@ def main():
         if stored_docs:
             st.subheader("Stored Documents")
             
-            # Create a list of display names for the dropdown
-            doc_options = [f"{doc['filename']} (ID: {doc['id']})" for doc in stored_docs]
-            selected_doc_display = st.selectbox("Select a document", doc_options)
+            # Create a dictionary to track selected documents
+            if 'selected_docs' not in st.session_state:
+                st.session_state.selected_docs = {}
             
-            # Extract the document ID from the selected option
-            selected_doc_id = selected_doc_display.split("(ID: ")[1][:-1] if selected_doc_display else None
+            # Display documents with checkboxes
+            for doc in stored_docs:
+                doc_key = f"doc_{doc['id']}"
+                is_selected = st.checkbox(
+                    f"{doc['filename']} (ID: {doc['id']})",
+                    value=st.session_state.selected_docs.get(doc_key, False),
+                    key=doc_key
+                )
+                st.session_state.selected_docs[doc_key] = is_selected
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("Load Selected Document", type="secondary", use_container_width=True):
-                    if selected_doc_id:
+                if st.button("Load Selected Documents", type="secondary", use_container_width=True):
+                    selected_ids = []
+                    for doc in stored_docs:
+                        doc_key = f"doc_{doc['id']}"
+                        if st.session_state.selected_docs.get(doc_key, False):
+                            selected_ids.append(doc['id'])
+                    
+                    if not selected_ids:
+                        st.warning("Please select at least one document")
+                    else:
                         try:
-                            doc = st.session_state.document_processor.get_document(selected_doc_id)
-                            if doc:
-                                # Reconstruct the processed_content structure
-                                # Re-segment the document since we only store content
-                                segments = st.session_state.document_processor.intelligent_segmentation(doc['content'])
-                                metadata = st.session_state.document_processor.extract_metadata(segments)
+                            all_segments = []
+                            all_metadata = {'chapters': [], 'sections': []}
+                            
+                            for doc_id in selected_ids:
+                                doc = st.session_state.document_processor.get_document(doc_id)
+                                if doc:
+                                    # Reconstruct the processed_content structure
+                                    segments = st.session_state.document_processor.intelligent_segmentation(doc['content'])
+                                    metadata = st.session_state.document_processor.extract_metadata(segments)
+                                    
+                                    all_segments.extend(segments)
+                                    all_metadata['chapters'].extend(metadata.get('chapters', []))
+                                    all_metadata['sections'].extend(metadata.get('sections', []))
+                            
+                            if all_segments:
+                                # Calculate combined metadata
+                                all_metadata['total_words'] = sum(len(seg['text'].split()) for seg in all_segments)
+                                all_metadata['total_paragraphs'] = len(all_segments)
                                 
                                 st.session_state.processed_content = {
-                                    'content': doc['content'],
-                                    'segments': segments,
-                                    'metadata': metadata,
-                                    'filename': doc['filename'],
-                                    'format': doc['format']
+                                    'content': "\n\n".join([seg['text'] for seg in all_segments]),
+                                    'segments': all_segments,
+                                    'metadata': all_metadata,
+                                    'filename': f"{len(selected_ids)} selected documents",
+                                    'format': 'combined'
                                 }
-                                st.success(f"Loaded document: {doc['filename']}")
+                                st.success(f"Loaded {len(selected_ids)} documents")
                                 st.rerun()
                         except Exception as e:
-                            st.error(f"Error loading document: {str(e)}")
+                            st.error(f"Error loading documents: {str(e)}")
             with col2:
-                if st.button("Delete Selected Document", type="secondary", use_container_width=True):
-                    if selected_doc_id:
+                if st.button("Delete Selected Documents", type="secondary", use_container_width=True):
+                    selected_ids = []
+                    for doc in stored_docs:
+                        doc_key = f"doc_{doc['id']}"
+                        if st.session_state.selected_docs.get(doc_key, False):
+                            selected_ids.append(doc['id'])
+                    
+                    if not selected_ids:
+                        st.warning("Please select at least one document")
+                    else:
                         try:
-                            if st.session_state.document_processor.delete_document(selected_doc_id):
-                                st.success("Document deleted successfully!")
-                                st.rerun()
+                            for doc_id in selected_ids:
+                                if st.session_state.document_processor.delete_document(doc_id):
+                                    # Remove from selected state
+                                    doc_key = f"doc_{doc_id}"
+                                    if doc_key in st.session_state.selected_docs:
+                                        del st.session_state.selected_docs[doc_key]
+                            
+                            st.success(f"Deleted {len(selected_ids)} documents")
+                            st.rerun()
                         except Exception as e:
-                            st.error(f"Error deleting document: {str(e)}")
+                            st.error(f"Error deleting documents: {str(e)}")
+            with col3:
+                if st.button("Clear Selection", type="secondary", use_container_width=True):
+                    for key in list(st.session_state.selected_docs.keys()):
+                        st.session_state.selected_docs[key] = False
+                    st.rerun()
         else:
             st.info("No documents stored yet.")
     except Exception as e:
