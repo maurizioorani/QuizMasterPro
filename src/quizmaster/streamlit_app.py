@@ -27,6 +27,7 @@ def main():
     if 'quiz_data' not in st.session_state:
         st.session_state.quiz_data = None
 
+
     # Sidebar for settings and configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -42,8 +43,11 @@ def main():
             "deepseek-r1:latest": "DeepSeek-R1: Strong model from DeepSeek AI, particularly for coding.",
             "granite3.3:latest": "IBM's Granite 3.3: Enterprise-focused model for various tasks.",
             "llama3.1:8b": "Meta's Llama 3.1: Previous generation, 8B parameters, balanced performance.",
-            "mistral:7b": "Mistral AI's Mistral-7B: Highly efficient and popular open-source model.",
-            "qwen2.5:7b": "Alibaba's Qwen 2.5: Capable multilingual model, 7B parameters."
+            "mistral:7b": "⭐ RECOMMENDED: Mistral-7B - Excellent JSON generation, efficient (4.1GB), reliable structured output.",
+            "qwen2.5:7b": "⭐ RECOMMENDED: Qwen 2.5 - Strong JSON/structured output, multilingual, efficient (4.4GB).",
+            "deepseek-coder:6.7b": "🔧 JSON SPECIALIST: DeepSeek Coder - Code-focused, excellent structured formats (3.8GB).",
+            "codellama:7b": "🔧 JSON SPECIALIST: CodeLlama - Meta's coding model, strong with structured data (3.8GB).",
+            "gemma2:9b": "⭐ RECOMMENDED: Gemma2-9B - Google's instruction-following model, good JSON reliability (5.4GB)."
             # Add more descriptions as new models are verified and added
         }
 
@@ -99,7 +103,8 @@ def main():
                         
                         if success:
                             # Success message on placeholder is handled by pull_model
-                            st.session_state.quiz_generator.current_model = selected_model
+                            st.session_state.quiz_generator.set_model(selected_model) # Use set_model to initialize LLM/Embeddings
+                            st.session_state.document_processor.set_model(selected_model) # Set model for document processing too
                             st.success(f"Model changed to {selected_model}") # General success for model change
                         else:
                             # Error message on placeholder is handled by pull_model
@@ -142,6 +147,27 @@ def main():
         
         st.divider()
         
+        # Concept Extraction Settings
+        st.subheader("🧠 Concept Extraction")
+        use_concept_extraction = st.checkbox(
+            "Enable Concept Extraction",
+            value=True,
+            help="Extract key concepts to improve quiz quality. Uses robust fallback method without JSON requirements."
+        )
+        
+        if use_concept_extraction:
+            st.caption("📚 Will extract Key Definitions, Important Facts, and Main Ideas using your selected model")
+            # Update document processor settings
+            if hasattr(st.session_state, 'document_processor'):
+                st.session_state.document_processor.fallback_extraction_enabled = True
+        else:
+            st.caption("⚡ Faster processing without concept extraction")
+            # Update document processor settings
+            if hasattr(st.session_state, 'document_processor'):
+                st.session_state.document_processor.fallback_extraction_enabled = False
+        
+        st.divider()
+        
         # Document Info
         if st.session_state.processed_content:
             st.subheader("📄 Document Info")
@@ -181,10 +207,10 @@ def main():
                     st.session_state.processed_content = processed_content
                     progress_bar.progress(100)
                     
-                    # Store the processed document in ChromaDB
+                    # Store the processed document as JSON file
                     try:
                         doc_id = st.session_state.document_processor.store_document(processed_content)
-                        st.success(f"✅ Document processed and stored successfully! ID: {doc_id}")
+                        st.success(f"✅ Document processed and stored successfully! ID: {doc_id[:8]}...")
                     except Exception as e:
                         st.error(f"❌ Error storing document: {str(e)}")
                         st.success("✅ Document processed successfully!")
@@ -228,31 +254,34 @@ def main():
                         st.warning("Please select at least one document")
                     else:
                         try:
-                            all_segments = []
-                            all_metadata = {'chapters': [], 'sections': []}
+                            all_langchain_documents = []
+                            combined_content = ""
+                            combined_metadata = {'chapters': [], 'sections': [], 'total_words': 0, 'total_paragraphs': 0}
                             
                             for doc_id in selected_ids:
-                                doc = st.session_state.document_processor.get_document(doc_id)
-                                if doc:
-                                    # Reconstruct the processed_content structure
-                                    segments = st.session_state.document_processor.intelligent_segmentation(doc['content'])
-                                    metadata = st.session_state.document_processor.extract_metadata(segments)
+                                doc_data = st.session_state.document_processor.get_document(doc_id)
+                                if doc_data:
+                                    # Reconstruct processed_content for display purposes
+                                    combined_content += doc_data['content'] + "\n\n"
                                     
-                                    all_segments.extend(segments)
-                                    all_metadata['chapters'].extend(metadata.get('chapters', []))
-                                    all_metadata['sections'].extend(metadata.get('sections', []))
-                            
-                            if all_segments:
-                                # Calculate combined metadata
-                                all_metadata['total_words'] = sum(len(seg['text'].split()) for seg in all_segments)
-                                all_metadata['total_paragraphs'] = len(all_segments)
-                                
+                                    # Update combined metadata (basic aggregation)
+                                    combined_metadata['total_words'] += doc_data['metadata']['total_words']
+                                    combined_metadata['total_paragraphs'] += doc_data['metadata']['total_paragraphs']
+                                    
+                                    # Add extracted concepts if available
+                                    if 'extracted_concepts' in doc_data:
+                                        if 'all_extracted_concepts' not in combined_metadata:
+                                            combined_metadata['all_extracted_concepts'] = []
+                                        combined_metadata['all_extracted_concepts'].extend(doc_data['extracted_concepts'])
+                                    
+                            if combined_content.strip():
                                 st.session_state.processed_content = {
-                                    'content': "\n\n".join([seg['text'] for seg in all_segments]),
-                                    'segments': all_segments,
-                                    'metadata': all_metadata,
+                                    'content': combined_content.strip(),
+                                    'segments': st.session_state.document_processor.intelligent_segmentation(combined_content.strip()),
+                                    'metadata': combined_metadata,
                                     'filename': f"{len(selected_ids)} selected documents",
-                                    'format': 'combined'
+                                    'format': 'combined',
+                                    'extracted_concepts': combined_metadata.get('all_extracted_concepts', [])
                                 }
                                 st.success(f"Loaded {len(selected_ids)} documents")
                                 st.rerun()
@@ -280,7 +309,7 @@ def main():
                             st.success(f"Deleted {len(selected_ids)} documents")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error deleting documents: {str(e)}")
+                            st.error(f"Error deleting document: {str(e)}")
             with col3:
                 if st.button("Clear Selection", type="secondary", use_container_width=True):
                     for key in list(st.session_state.selected_docs.keys()):

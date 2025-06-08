@@ -9,6 +9,8 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 ### Document Processing
 - **Multi-format Support**: PDF, DOCX, TXT, HTML files
 - **Intelligent Segmentation**: Automatically identifies chapters, sections, and content structure
+- **Advanced Concept Extraction**: Robust AI-powered extraction of Key Definitions, Important Facts, and Main Ideas
+- **Dual Extraction Methods**: ContextGem integration with intelligent fallback system (no JSON requirements)
 - **Metadata Extraction**: Extracts document structure and statistics
 - **Content Preview**: Review processed content before quiz generation
 
@@ -108,8 +110,12 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 - **Smart Model Selection**: Choose from available Ollama models in the sidebar
   - ✅ Models marked as "(Local)" are already downloaded
   - 📥 Models marked as "(Pull needed)" will be automatically downloaded
+  - ⭐ **Recommended**: Use `mistral:7b`, `qwen2.5:7b`, or `gemma2:9b` for best quiz generation
 - **Automatic Model Management**: Simply select any model - QuizMaster will handle the rest
 - **Connection Testing**: Use "Test Ollama Connection" to verify setup
+- **Configure Concept Extraction**: Enable/disable advanced AI concept extraction
+  - ✅ **Enabled**: Extracts Key Definitions, Important Facts, and Main Ideas for better quiz quality
+  - ⚡ **Disabled**: Faster processing without concept analysis
 - Configure quiz settings:
   - Number of questions (1-20)
   - Difficulty level (Easy/Medium/Hard)
@@ -145,12 +151,24 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 ## 🔧 Configuration
 
 ### Supported Ollama Models
-- `llama3.2:3b` - Fast, lightweight (default)
-- `llama3.1:8b` - Balanced performance and quality
-- `llama3.1:70b` - Highest quality (requires significant resources)
-- `mistral:7b` - Alternative option
-- `gemma2:9b` - Google's model
-- `qwen2.5:7b` - Alibaba's model
+
+**⭐ Recommended for Best Performance:**
+- `mistral:7b` - Excellent JSON generation, efficient (4.1GB), reliable structured output
+- `qwen2.5:7b` - Strong JSON/structured output, multilingual, efficient (4.4GB)
+- `gemma2:9b` - Google's instruction-following model, good JSON reliability (5.4GB)
+
+**🔧 JSON Specialists (Great for Quiz Generation):**
+- `deepseek-coder:6.7b` - Code-focused, excellent structured formats (3.8GB)
+- `codellama:7b` - Meta's coding model, strong with structured data (3.8GB)
+
+**Other Capable Models:**
+- `llama3.3:8b` - Meta's latest generation, 8B parameters, strong all-rounder
+- `llama3.3:70b` - Meta's latest generation, 70B parameters (large size, high resource requirements)
+- `llama3.1:8b` - Previous generation, may have JSON formatting issues
+- `gemma3:9b` - Google's newer model, good for coding & reasoning
+- `phi4:latest` - Microsoft's efficient model
+- `deepseek-r1:latest` - DeepSeek's advanced reasoning model
+- `granite3.3:latest` - IBM's enterprise-focused model
 
 ### Question Types
 - **Multiple Choice**: 4 options with plausible distractors
