@@ -2,6 +2,8 @@
 
 Are you struggling to memorize concepts for an exam or do you simply want to improve in a professional topic? Then simply upload your document to QuizMaster Pro and let the AI create a custom quiz in order to test and monitor your learning. QuizMaster Pro leverages Ollama for private, offline quiz generation from PDF, DOCX, TXT, and HTML documents.
 
+![QuizMaster Pro Screenshot 1](screenshots/quiz1.png) ![QuizMaster Pro Screenshot 2](screenshots/quiz2.png)
+
 ## 🌟 Features
 
 ### Document Processing
