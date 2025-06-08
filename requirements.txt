@@ -1,0 +1,14 @@
+streamlit>=1.28.0
+pdfplumber>=0.9.0
+python-docx>=0.8.11
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+litellm>=1.35.0
+openai>=1.0.0
+tiktoken>=0.5.0
+numpy>=1.24.0
+pandas>=2.0.0
+python-dotenv>=1.0.0
+jsonschema>=4.17.0
+chromadb>=0.4.24
+duckdb>=0.10.1
