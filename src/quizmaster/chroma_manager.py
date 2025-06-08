@@ -12,10 +12,28 @@ class ChromaManager:
         # Use the new PersistentClient API
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-        self.collection = self.client.get_or_create_collection(
-            name="documents",
-            metadata={"hnsw:space": "cosine"}
-        )
+        try:
+            self.collection = self.client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"}
+            )
+        except Exception as e:
+            if "Could not connect to tenant default_tenant" in str(e):
+                print(f"ChromaDB error detected: {e}. Attempting to reset ChromaDB directory.")
+                # Clean up potentially corrupted ChromaDB directory
+                import shutil
+                if os.path.exists(persist_directory):
+                    shutil.rmtree(persist_directory)
+                os.makedirs(persist_directory, exist_ok=True)
+                
+                # Re-initialize client and collection
+                self.client = chromadb.PersistentClient(path=persist_directory)
+                self.collection = self.client.get_or_create_collection(
+                    name="documents",
+                    metadata={"hnsw:space": "cosine"}
+                )
+            else:
+                raise # Re-raise other exceptions
 
     def store_document(self, processed_doc: Dict) -> str:
         """Store processed document and return its ID"""
