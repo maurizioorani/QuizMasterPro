@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import re
 import subprocess
@@ -11,14 +12,13 @@ import tiktoken
 from functools import lru_cache
 from dataclasses import dataclass
 from jsonschema import validate, ValidationError
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from difflib import SequenceMatcher
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Adding a comment to force Streamlit reload
 @dataclass
 class QuizConfig:
     """Configuration for quiz generation."""
@@ -94,14 +94,19 @@ class QuizGenerator:
         self.config = config or QuizConfig()
         self.question_types = ["Multiple Choice", "Open-Ended", "True/False", "Fill-in-the-Blank"]
         self.difficulty_levels = ["Easy", "Medium", "Hard"]
-        self.available_models = [
+        self.openai_models = [
+            "gpt-4.1-nano",       # ⚡ OPENAI: GPT-4.1 Nano - Lightweight but powerful
+            "gpt-4o-mini",        # ⚡ OPENAI: GPT-4O Mini - Optimized for structured output
+        ]
+        self.ollama_models = [
             # JSON-optimized models (recommended first)
             "mistral:7b",         # ⭐ RECOMMENDED: Excellent JSON generation, efficient (4.1GB)
             "qwen2.5:7b",         # ⭐ RECOMMENDED: Strong JSON/structured output, multilingual (4.4GB)
             "gemma2:9b",          # ⭐ RECOMMENDED: Google's instruction-following, good JSON (5.4GB)
-            "deepseek-coder:6.7b", # 🔧 JSON SPECIALIST: Code-focused, excellent structured formats (3.8GB)
+            "deepseek-coder:6.7b", # 🔧 JSON SPECIALIST: Code-focused, excellent structured formats (3.8GB) 
             "codellama:7b",       # 🔧 JSON SPECIALIST: Meta's coding model, strong structured data (3.8GB)
-            # Other capable models
+            "mistral-nemo:latest", # Nvidia's optimized version of Mistral for structured generation
+            # Other capable models  
             "llama3.3:8b",        # Meta's Llama 3.3, 8 billion parameters
             "llama3.3:70b",       # Meta's Llama 3.3, 70 billion parameters (large size)
             "gemma3:9b",          # Google's Gemma 3, 9 billion parameters
@@ -110,15 +115,22 @@ class QuizGenerator:
             "granite3.3:latest",  # IBM's Granite 3.3 model
             "llama3.1:8b"         # Meta's Llama 3.1 (may have JSON formatting issues)
         ]
-        self.current_model = "llama3.3:8b"  # Default to a new Llama3.3 model
+        self.available_models = self.openai_models + self.ollama_models
+        self.current_model = "gpt-4.1-nano"  # Default to OpenAI model
         self._question_cache = {}
         
     def set_model(self, model_name: str, auto_pull: bool = True) -> bool:
-        """Set the Ollama model to use for generation with optional auto-pull."""
+        """Set the model to use for generation."""
         if model_name not in self.available_models:
             raise ValueError(f"Model {model_name} not available. Choose from: {self.available_models}")
             
-        # Check if model is available locally
+        # Skip local checks for OpenAI models
+        if model_name in self.openai_models:
+            self.current_model = model_name
+            logger.info(f"Successfully set OpenAI model to {model_name}")
+            return True
+            
+        # For Ollama models, check local availability
         if not self.is_model_available(model_name):
             if auto_pull:
                 logger.info(f"Model {model_name} not found locally. Attempting to pull...")
@@ -151,102 +163,29 @@ class QuizGenerator:
                 if attempt < self.config.max_retries - 1:
                     time.sleep(self.config.retry_delay)
                     
+        logger.error("Failed to connect to Ollama after all retries")
         return False
     
-    def pull_model(self, model_name: str, progress_placeholder: Optional[Any] = None) -> bool:
-        """Pull a model using Ollama with progress tracking and Streamlit placeholder updates."""
-        try:
-            logger.info(f"Pulling model {model_name}... This may take a few minutes.")
-            if progress_placeholder:
-                progress_placeholder.text(f"🔄 Initializing pull for {model_name}...")
-
-            # Start the pull process
-            process = subprocess.Popen(
-                ['ollama', 'pull', model_name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=1,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            # Monitor progress and stream output
-            if progress_placeholder:
-                output_lines = []
-                max_lines_to_display = 10 # Display last N lines to avoid clutter
-                for line in iter(process.stdout.readline, ''):
-                    cleaned_line = line.strip()
-                    if cleaned_line: # Avoid empty lines
-                        logger.info(f"Ollama pull output: {cleaned_line}")
-                        output_lines.append(cleaned_line)
-                        # Display the last few lines of output
-                        display_text = "\n".join(output_lines[-max_lines_to_display:])
-                        progress_placeholder.text(f"🔄 Pulling {model_name}:\n{display_text}")
-                    if process.poll() is not None: # Check if process ended
-                        break
-                process.stdout.close()
-
-            return_code = process.wait(timeout=self.config.pull_timeout) # Wait for process to complete
-
-            if return_code == 0:
-                logger.info(f"Successfully pulled model {model_name}")
-                if progress_placeholder:
-                    progress_placeholder.success(f"✅ Successfully downloaded {model_name}")
-                return True
-            else:
-                # stderr was already captured if combined, otherwise read it here
-                # stderr_output = process.stderr.read() if process.stderr else "Unknown error"
-                logger.error(f"Error pulling model {model_name} (return code: {return_code})")
-                if progress_placeholder:
-                    progress_placeholder.error(f"❌ Failed to download {model_name}. Please check logs or Ollama status.")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout while pulling model {model_name}")
-            if progress_placeholder:
-                progress_placeholder.error(f"⌛ Timeout pulling {model_name}.")
-            if process: # Ensure process is defined
-                process.terminate()
-            return False
-        except Exception as e:
-            logger.error(f"Error pulling model {model_name}: {str(e)}")
-            if progress_placeholder:
-                progress_placeholder.error(f"❌ Error pulling {model_name}: {str(e)}")
-            return False
-    
-    def _ensure_embedding_model(self, model_name: str):
-        """Ensure the embedding model is available, pull if necessary"""
-        try:
-            # Check if model is available
-            response = requests.get(f"{self.config.ollama_base_url}/api/tags", timeout=10)
-            if response.status_code == 200:
-                models = response.json()
-                available_models = [model['name'] for model in models.get('models', [])]
-                if model_name in available_models:
-                    logger.info(f"✅ Embedding model {model_name} is already available")
-                    return
-            
-            # Model not available, try to pull it
-            logger.info(f"🔄 Pulling embedding model {model_name}...")
-            result = subprocess.run(
-                ['ollama', 'pull', model_name],
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
-            
-            if result.returncode == 0:
-                logger.info(f"✅ Successfully pulled embedding model {model_name}")
-            else:
-                logger.error(f"❌ Failed to pull embedding model {model_name}: {result.stderr}")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Error checking/pulling embedding model {model_name}: {e}")
-
     def test_ollama_connection(self) -> bool:
         """Test connection to Ollama server with retries."""
+        # If current model is an OpenAI model, test OpenAI connection instead
+        if self.current_model in self.openai_models:
+            try:
+                # Just check for OPENAI_API_KEY presence
+                api_key = os.environ.get("OPENAI_API_KEY")
+                if not api_key:
+                    logger.error("OpenAI API key not found in environment variables")
+                    return False
+                logger.info("OpenAI API key found, assuming connection is available")
+                return True
+            except Exception as e:
+                logger.error(f"Error checking OpenAI connection: {str(e)}")
+                return False
+        
+        # For Ollama models
         for attempt in range(self.config.max_retries):
             try:
+                # Use proper format for Ollama models
                 response = completion(
                     model=f"ollama/{self.current_model}",
                     messages=[{"role": "user", "content": "Hello"}],
@@ -254,6 +193,7 @@ class QuizGenerator:
                     max_tokens=10,
                     temperature=0.1
                 )
+                logger.info(f"Successfully connected to Ollama with model {self.current_model}")
                 return True
             except Exception as e:
                 logger.warning(f"Ollama connection attempt {attempt + 1} failed: {str(e)}")
@@ -263,21 +203,36 @@ class QuizGenerator:
         logger.error("Failed to connect to Ollama after all retries")
         return False
     
-    def _make_llm_request(self, prompt: str, max_tokens: int = 500, 
+    def _make_llm_request(self, prompt: str, max_tokens: int = 500,
                          temperature: Optional[float] = None) -> Optional[str]:
-        """Make LLM request with retry logic using litellm."""        
+        """Make LLM request with retry logic using litellm."""
         temperature = temperature or self.config.default_temperature
 
         for attempt in range(self.config.max_retries):
             try:
-                response = completion(
-                    model=f"ollama/{self.current_model}",
-                    messages=[{"role": "user", "content": prompt}],
-                    api_base=self.config.ollama_base_url,
-                    max_tokens=max_tokens,
-                    temperature=temperature
-                )
+                if self.current_model in self.openai_models:
+                    # Use OpenAI API for OpenAI models
+                    response = completion(
+                        model=self.current_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                else:
+                    # Use Ollama for local models - prefix with "ollama/"
+                    response = completion(
+                        model=f"ollama/{self.current_model}",
+                        messages=[{"role": "user", "content": prompt}],
+                        api_base=self.config.ollama_base_url,
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
                 return response.choices[0].message.content
+            except RuntimeError as e:
+                if "cannot schedule new futures after interpreter shutdown" in str(e):
+                    logger.error("Interpreter shutdown detected - restart required")
+                    return None
+                raise
                 
             except Exception as e:
                 logger.warning(f"LLM request attempt {attempt + 1} failed: {str(e)}")
@@ -364,6 +319,30 @@ class QuizGenerator:
         import uuid
         return f"{content_hash}_{focus_section}_{question_type}_{difficulty}_{question_num}_{uuid.uuid4().hex[:8]}"
     
+    def _is_question_unique(self, new_question: Dict, existing_questions: List[Dict]) -> bool:
+        """Check if a new question is unique compared to existing questions."""        
+        new_text = new_question['text'].lower()
+        
+        # Check for similar core concepts
+        new_core = re.sub(r'\b(?:which|what|how|is|are|does|do|can|could|would|should)\b', '', new_text)
+        new_core = re.sub(r'\W+', ' ', new_core).strip()[:50]
+        
+        for existing in existing_questions:
+            existing_text = existing['text'].lower()
+            existing_core = re.sub(r'\b(?:which|what|how|is|are|does|do|can|could|would|should)\b', '', existing_text)
+            existing_core = re.sub(r'\W+', ' ', existing_core).strip()[:50]
+            
+            # Check if core concepts are too similar
+            if new_core == existing_core:
+                return False
+                
+            # Check for high text similarity
+            if len(new_text) > 30 and len(existing_text) > 30:
+                if SequenceMatcher(None, new_text, existing_text).ratio() > 0.7:
+                    return False
+                    
+        return True
+        
     def generate(self, processed_content: Dict, question_types: List[str], 
                 num_questions: int, difficulty: str, focus_section: Optional[str] = None,
                 use_cache: bool = False) -> Dict:
@@ -373,6 +352,10 @@ class QuizGenerator:
         content = processed_content.get('content', '')
         extracted_concepts = processed_content.get('extracted_concepts', [])
         
+        logger.info(f"Starting quiz generation for {num_questions} questions of type {question_types} and difficulty {difficulty}.")
+        logger.info(f"Processed content available: {bool(content)}")
+        logger.info(f"Extracted concepts count: {len(extracted_concepts)}")
+
         if not content:
             logger.error("No content found in processed_content.")
             return {
@@ -388,15 +371,15 @@ class QuizGenerator:
                 }
             }
 
-        # Prepare context data for question generation
-        # Use both the full content and ContextGem extracted concepts
+        # Prepare context data for question generation with usage tracking
         context_data = []
         
         # Add full document content
         context_data.append({
             'content': self._truncate_content(content, 2000),
             'type': 'full_document',
-            'source': 'document'
+            'source': 'document',
+            'used': False
         })
         
         # Add ContextGem extracted concepts
@@ -404,12 +387,14 @@ class QuizGenerator:
             context_data.append({
                 'content': concept['content'],
                 'type': concept['concept_name'],
-                'source': concept.get('source_sentence', '')
+                'source': concept.get('source_sentence', ''),
+                'used': False
             })
 
         questions = []
         generated_count = 0
         failed_count = 0
+        used_context_indices = set()
         
         # Create a pool of question types to draw from
         question_pool = []
@@ -419,10 +404,30 @@ class QuizGenerator:
         
         random.shuffle(question_pool)
 
-        for i, question_type in enumerate(question_pool):
+        logger.info(f"Initial question pool distribution: {self._distribute_questions(question_types, num_questions)}")
+        logger.info(f"Question pool size: {len(question_pool)}")
+
+        # Generate questions with retries for failed ones
+        attempts = 0
+        max_attempts = num_questions * 3  # Allow more attempts for diversity
+
+        logger.info(f"Starting question generation loop. Target: {num_questions}, Max attempts: {max_attempts}")
+        
+        while len(questions) < num_questions and attempts < max_attempts:
+            question_type = question_pool[attempts % len(question_pool)]  # Cycle through question types
+            logger.info(f"Attempt {attempts + 1}/{max_attempts}: Generating {question_type} question.")
+            
             try:
-                # Select relevant context for this question
-                selected_context = self._select_relevant_context(context_data, question_type, focus_section)
+                # Select relevant context (avoiding used contexts)
+                available_indices = [i for i, ctx in enumerate(context_data) if not ctx['used']]
+                if not available_indices:
+                    available_indices = list(range(len(context_data)))  # Fallback to all contexts
+                    
+                selected_idx = random.choice(available_indices)
+                selected_context = context_data[selected_idx]['content']
+                context_data[selected_idx]['used'] = True
+                used_context_indices.add(selected_idx)
+                logger.info(f"Selected context from index {selected_idx}. Context snippet: {selected_context[:100]}...")
                 
                 # Generate question using selected context
                 question = self._generate_question_with_context(
@@ -430,16 +435,63 @@ class QuizGenerator:
                 )
 
                 if question:
-                    questions.append(question)
-                    generated_count += 1
+                    logger.info(f"Successfully generated a question (type: {question.get('type', 'N/A')}). Checking uniqueness.")
+                    # Check for uniqueness before adding
+                    if self._is_question_unique(question, questions):
+                        questions.append(question)
+                        generated_count += 1
+                        logger.info(f"Question added. Total generated: {generated_count}/{num_questions}")
+                    else:
+                        # Release context for reuse
+                        context_data[selected_idx]['used'] = False
+                        used_context_indices.discard(selected_idx)
+                        failed_count += 1
+                        logger.warning(f"Duplicate question skipped: {question['text'][:50]}...")
                 else:
                     failed_count += 1
-                    logger.warning(f"Failed to generate {question_type} question {i+1}.")
+                    logger.warning(f"Failed to generate {question_type} question (attempt {attempts + 1})")
                     
             except Exception as e:
                 failed_count += 1
-                logger.error(f"Error generating {question_type} question: {str(e)}")
+                logger.error(f"Error generating question (attempt {attempts + 1}): {str(e)}", exc_info=True)
+                
+            attempts += 1
+            
+        logger.info(f"Question generation loop finished. Generated: {len(questions)}, Failed: {failed_count}, Attempts: {attempts}")
+
+        # Fallback for remaining questions
+        if len(questions) < num_questions:
+            remaining = num_questions - len(questions)
+            logger.warning(f"Generating {remaining} additional questions with any available context")
+            
+            for i in range(remaining):
+                try:
+                    # Find any unused context
+                    available_indices = [i for i, ctx in enumerate(context_data) if not ctx['used']]
+                    if not available_indices:
+                        available_indices = list(range(len(context_data)))  # Fallback to all contexts
+                        
+                    selected_idx = random.choice(available_indices)
+                    selected_context = context_data[selected_idx]['content']
+                    context_data[selected_idx]['used'] = True
+                    
+                    # Generate with random question type
+                    q_type = random.choice(question_types)
+                    question = self._generate_question_with_context(
+                        selected_context, q_type, difficulty
+                    )
+                    
+                    if question and self._is_question_unique(question, questions):
+                        questions.append(question)
+                        generated_count += 1
+                    else:
+                        failed_count += 1
+                        context_data[selected_idx]['used'] = False
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error generating additional question: {str(e)}", exc_info=True)
         
+        logger.info(f"Final question count: {len(questions)}")
         return {
             'questions': questions,
             'metadata': {
@@ -498,78 +550,82 @@ class QuizGenerator:
         if not context.strip():
             return None
         
-        # Create prompt based on question type
+        # Enhanced prompt for diversity
         prompt = f"""You are an expert quiz question generator. Create a {difficulty} difficulty {question_type} question based on the following context.
+
+Important Instructions:
+- Focus on distinct concepts not covered in previous questions
+- Vary question phrasing and structure
+- Avoid repetitive question patterns
+- Ensure the question tests deep understanding, not just recall
 
 Context:
 {context}
-
-Instructions:
-- The question must be directly answerable from the context.
-- Do NOT use any external knowledge.
-- Ensure the question tests understanding of a concept, not just recall of a specific phrase.
-- Do NOT reference the source directly (no "according to the text" phrases).
 """
-
         if question_type == "Multiple Choice":
             prompt += """
-- Provide 4 options (A, B, C, D) with only one correct answer.
-- Make incorrect options plausible but clearly wrong.
+- Provide 4 plausible options with only one correct answer
+- Make incorrect options realistic but clearly wrong
 
-Format your response as valid JSON:
+Format response as valid JSON:
 {
-  "question": "Your question here",
+  "question": "Question text",
   "options": [
-    {"letter": "A", "text": "Option A text"},
-    {"letter": "B", "text": "Option B text"},
-    {"letter": "C", "text": "Option C text"},
-    {"letter": "D", "text": "Option D text"}
+    {{"letter": "A", "text": "Option A"}},
+    {{"letter": "B", "text": "Option B"}},
+    {{"letter": "C", "text": "Option C"}},
+    {{"letter": "D", "text": "Option D"}}
   ],
   "correct_answer": "A",
-  "explanation": "Detailed explanation of why the answer is correct"
+  "explanation": "Detailed explanation"
 }"""
-        
         elif question_type == "Open-Ended":
-            prompt += """
-Format your response as valid JSON:
+             prompt += """
+Format response as valid JSON:
 {
-  "question": "Your question here",
-  "sample_answer": "A comprehensive sample answer",
-  "key_points": ["Key point 1", "Key point 2", "Key point 3"],
-  "explanation": "Explanation of what makes a good answer"
+  "question": "Question text",
+  "sample_answer": "A detailed sample answer",
+  "key_points": ["Point 1", "Point 2"],
+  "explanation": "Detailed explanation"
 }"""
-        
         elif question_type == "True/False":
-            prompt += """
-Format your response as valid JSON:
+             prompt += """
+Format response as valid JSON:
 {
-  "statement": "A clear true or false statement",
-  "answer": true or false,
-  "explanation": "Detailed explanation of why the statement is true or false"
+  "statement": "Statement text",
+  "answer": true, // or false
+  "explanation": "Detailed explanation"
+}"""
+        elif question_type == "Fill-in-the-Blank":
+             prompt += """
+Format response as valid JSON:
+{
+  "question": "Question text with [BLANK] placeholder",
+  "answer": "The correct word or phrase for the blank",
+  "explanation": "Detailed explanation"
 }"""
         
-        elif question_type == "Fill-in-the-Blank":
-            prompt += """
-- Replace a key term/phrase with "______"
-Format your response as valid JSON:
-{
-  "question": "Your question with ______ for the blank",
-  "answer": "The correct word/phrase for the blank",
-  "explanation": "Explanation of why this is the correct answer"
-}"""
-
+        logger.info(f"Prompt for LLM (snippet): {prompt[:500]}...")
         # Make LLM request
         response = self._make_llm_request(prompt, max_tokens=800)
+        logger.info(f"Raw LLM response: {response}")
         if not response:
+            logger.warning("LLM request returned None.")
             return None
         
         # Parse and validate JSON
         schema = self.get_schema_for_question_type(question_type)
+        logger.info(f"Parsing and validating JSON response against schema for {question_type}.")
         parsed_question = self._parse_json_response(response, schema)
         
         if not parsed_question:
+            logger.warning("JSON parsing or validation failed.")
+            # Log validation error if available
+            if hasattr(self, '_parse_json_response_error') and self._parse_json_response_error:
+                 logger.error(f"JSON validation error: {self._parse_json_response_error}")
             return None
         
+        logger.info("JSON parsed and validated successfully.")
         # Convert to internal format
         if question_type == "Multiple Choice":
             return {
@@ -603,29 +659,34 @@ Format your response as valid JSON:
             }
         
         return None
-    
-    def get_schema_for_question_type(self, question_type: str) -> Dict:
-        """Returns the JSON schema for a given question type."""
-        schemas = {
-            "Multiple Choice": self.MCQ_SCHEMA,
-            "Open-Ended": self.OPEN_ENDED_SCHEMA,
-            "True/False": self.TRUE_FALSE_SCHEMA,
-            "Fill-in-the-Blank": self.FILL_BLANK_SCHEMA
-        }
-        return schemas.get(question_type, {})
 
     def _distribute_questions(self, question_types: List[str], total_questions: int) -> Dict[str, int]:
         """Distribute total questions across selected question types."""
         distribution = {}
-        questions_per_type = max(1, total_questions // len(question_types))
-        remaining_questions = total_questions % len(question_types)
+        if not question_types:
+            return distribution
+            
+        # Calculate base questions per type and remainder
+        base_count = total_questions // len(question_types)
+        remainder = total_questions % len(question_types)
         
-        for i, question_type in enumerate(question_types):
-            distribution[question_type] = questions_per_type
-            if i < remaining_questions:
-                distribution[question_type] += 1
-                
+        # Distribute base counts
+        for q_type in question_types:
+            distribution[q_type] = base_count
+            
+        # Distribute remainder questions
+        for i in range(remainder):
+            distribution[question_types[i]] += 1
+            
+        # Ensure we have exactly the requested total
+        actual_total = sum(distribution.values())
+        if actual_total < total_questions:
+            # Add remaining questions to first type
+            distribution[question_types[0]] += (total_questions - actual_total)
+            
         return distribution
+
+    # Other methods remain unchanged...
     
     def _truncate_content(self, content: str, max_tokens: int = 3000) -> str:
         """Truncate content to fit within token limit."""
@@ -637,18 +698,13 @@ Format your response as valid JSON:
                 return encoding.decode(truncated_tokens)
         except Exception as e:
             logger.warning(f"Token encoding failed, using character truncation: {str(e)}")
-            # Fallback to character-based truncation
             estimated_chars = max_tokens * 4
             if len(content) > estimated_chars:
                 return content[:estimated_chars] + "..."
-                
         return content
-    
-    # Removed _generate_question, _generate_mcq, _generate_open_ended, _generate_true_false, _generate_fill_blank
-    # and all fallback methods as LangChain RAG will handle this.
-    
+
     def get_available_models(self) -> List[str]:
-        """Get list of available Ollama models."""
+        """Get list of available models."""
         return self.available_models.copy()
     
     def get_current_model(self) -> str:
@@ -656,7 +712,7 @@ Format your response as valid JSON:
         return self.current_model
     
     def get_local_models(self) -> List[str]:
-        """Get list of locally available models."""
+        """Get list of locally available Ollama models."""
         try:
             response = requests.get(f"{self.config.ollama_base_url}/api/tags")
             if response.status_code == 200:
@@ -666,15 +722,15 @@ Format your response as valid JSON:
         except Exception as e:
             logger.error(f"Error getting local models: {str(e)}")
             return []
+
+    # Additional unchanged methods...
     
-    def get_generation_stats(self) -> Dict[str, Any]:
-        """Get statistics about quiz generation."""
-        return {
-            'cache_size': len(self._question_cache),
-            'current_model': self.current_model,
-            'config': {
-                'max_retries': self.config.max_retries,
-                'retry_delay': self.config.retry_delay,
-                'default_temperature': self.config.default_temperature
-            }
+    def get_schema_for_question_type(self, question_type: str) -> Dict:
+        """Returns the JSON schema for a given question type."""
+        schemas = {
+            "Multiple Choice": self.MCQ_SCHEMA,
+            "Open-Ended": self.OPEN_ENDED_SCHEMA,
+            "True/False": self.TRUE_FALSE_SCHEMA,
+            "Fill-in-the-Blank": self.FILL_BLANK_SCHEMA
         }
+        return schemas.get(question_type, {})

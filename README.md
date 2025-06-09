@@ -1,6 +1,8 @@
 # 📚 QuizMaster Pro
 
-Are you struggling to memorize concepts for an exam or do you simply want to improve in a professional topic? Then simply upload your document to QuizMaster Pro and let the AI create a custom quiz in order to test and monitor your learning. QuizMaster Pro leverages Ollama for private, offline quiz generation from PDF, DOCX, TXT, and HTML documents.
+Are you struggling to memorize concepts for an exam or do you simply want to improve in a professional topic? Then simply upload your document to QuizMaster Pro and let the AI create a custom quiz in order to test and monitor your learning. QuizMaster Pro uses OpenAI models for document processing and offers both OpenAI and local Ollama models for quiz generation from PDF, DOCX, TXT, and HTML documents.
+
+> **📢 Important Update**: After migrating to ContextGem for improved document processing, we found that local models struggled with JSON creation during the embedding process. To ensure more robust document processing, embedding is now only possible with OpenAI models, while quiz generation can still be performed successfully with local models (for example, Mistral 7b).
 
 ![QuizMaster Pro Screenshot 1](screenshots/quiz1.png) ![QuizMaster Pro Screenshot 2](screenshots/quiz2.png)
 
@@ -10,7 +12,8 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 - **Multi-format Support**: PDF, DOCX, TXT, HTML files
 - **Intelligent Segmentation**: Automatically identifies chapters, sections, and content structure
 - **Advanced Concept Extraction**: Robust AI-powered extraction of Key Definitions, Important Facts, and Main Ideas
-- **Dual Extraction Methods**: ContextGem integration with intelligent fallback system (no JSON requirements)
+- **OpenAI-Powered Embedding**: Uses OpenAI models for reliable document processing and embedding
+- **ContextGem Integration**: Enhanced document understanding with automatic fallback to basic segmentation
 - **Metadata Extraction**: Extracts document structure and statistics
 - **Content Preview**: Review processed content before quiz generation
 
@@ -22,7 +25,7 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 - **Metadata Preservation**: All original document metadata is retained with the stored content.
 
 ### AI-Powered Quiz Generation
-- **Local LLM Integration**: Uses Ollama for private, offline processing
+- **Flexible Model Selection**: Choose between OpenAI models (requires API key) or local Ollama models for quiz generation
 - **Enhanced Question Relevance**: Questions are generated from specific, relevant text segments, avoiding irrelevant introductory or summary content.
 - **Conceptual Questioning**: Prompts are refined to encourage questions about concepts, principles, and implications, rather than direct textual recall.
 - **Natural Question Phrasing**: Questions avoid phrases like "According to the text segment" for a more natural quiz experience.
@@ -52,30 +55,33 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 ### Smart Model Management
 - **Automatic Model Detection**: Shows which models are locally available vs. need downloading
 - **One-Click Model Setup**: Simply select any model - downloading happens automatically
-- **Visual Status Indicators**: Clear icons show model availability status
+- **Visual Status Indicators**: Clear icons show model availability status (Local, To be pulled, API)
 - **Background Downloads**: Models download seamlessly with progress feedback
 - **Zero Manual Setup**: No need to manually run `ollama pull` commands
+- **Separate Model Selection**: Different models for document processing (OpenAI) and quiz generation (OpenAI or Ollama)
+- **Contextual UI**: Interface adapts based on selected model type
 
-### Privacy & Performance
-- **100% Local Processing**: All data stays on your machine
-- **Model Selection**: Choose from various Ollama models
-- **Connection Testing**: Verify Ollama connectivity
+### Performance & Reliability
+- **Flexible Model Selection**: Choose from OpenAI or Ollama models
+- **Connection Testing**: Verify model connectivity with one click
 - **Progress Indicators**: Real-time feedback during processing
 - **Error Handling**: Graceful handling of processing failures
+- **Automatic Fallback**: Basic segmentation when ContextGem is unavailable
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8 or higher
-- [Ollama](https://ollama.ai/) installed and running
-- **ChromaDB**: Automatically installed with dependencies, but ensures persistent document storage.
+- **OpenAI API Key**: Required for document processing
+- [Ollama](https://ollama.ai/): Optional, only needed if using local models for quiz generation
+- **ChromaDB**: Automatically installed with dependencies, but ensures persistent document storage
 
 ### Installation
 
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/maurizioorani/QuizMasterPro.git
-   cd QuizMaster
+   cd QuizMasterPro
    ```
 
 2. **Install Dependencies**
@@ -83,17 +89,20 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
    pip install -r requirements.txt
    ```
 
-3. **Install and Setup Ollama**
+3. **Set Up OpenAI API Key**
+   Create a `.env` file in the project root directory with your OpenAI API key:
+   ```
+   OPENAI_API_KEY=your_openai_api_key_here
+   ```
+
+4. **Optional: Install and Setup Ollama** (only if you plan to use local models for quiz generation)
    ```bash
    # Install Ollama (visit https://ollama.ai/ for platform-specific instructions)
    
-   # Optional: Download a model manually (or let QuizMaster do it automatically)
-   ollama pull llama3.2:3b    # Not required - app will download automatically
-   ```
-
-4. **Start Ollama Server**
-   ```bash
+   # Start Ollama Server
    ollama serve
+   
+   # Models will be downloaded automatically when selected in the app
    ```
 
 5. **Launch QuizMaster Pro**
@@ -107,15 +116,18 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 ## 📖 Usage Guide
 
 ### Step 1: Configure Settings
-- **Smart Model Selection**: Choose from available Ollama models in the sidebar
-  - ✅ Models marked as "(Local)" are already downloaded
-  - 📥 Models marked as "(Pull needed)" will be automatically downloaded
+- **Embedding Model Selection**: Choose from available OpenAI models in the sidebar for document processing
+  - ⚡ OpenAI API key required in .env file
+  - ⭐ **Recommended**: Use `gpt-4.1-nano` or `gpt-4o-mini` for best embedding results
+  
+- **Quiz Generation Model Selection**: Choose from available OpenAI or Ollama models
+  - ✅ Ollama models marked as "Local" are already downloaded
+  - 📥 Ollama models marked as "To be pulled" will be automatically downloaded
+  - ⚡ OpenAI models require API key
   - ⭐ **Recommended**: Use `mistral:7b`, `qwen2.5:7b`, or `gemma2:9b` for best quiz generation
+  
 - **Automatic Model Management**: Simply select any model - QuizMaster will handle the rest
-- **Connection Testing**: Use "Test Ollama Connection" to verify setup
-- **Configure Concept Extraction**: Enable/disable advanced AI concept extraction
-  - ✅ **Enabled**: Extracts Key Definitions, Important Facts, and Main Ideas for better quiz quality
-  - ⚡ **Disabled**: Faster processing without concept analysis
+- **Connection Testing**: Use "Test Ollama" button to verify local model connections
 - Configure quiz settings:
   - Number of questions (1-20)
   - Difficulty level (Easy/Medium/Hard)
@@ -150,7 +162,13 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 
 ## 🔧 Configuration
 
-### Supported Ollama Models
+### Supported Models
+
+#### Embedding Models (Document Processing)
+- `gpt-4.1-nano` - Lightweight but powerful model optimized for efficiency
+- `gpt-4o-mini` - Specialized for structured output and JSON generation
+
+#### Quiz Generation Models
 
 **⭐ Recommended for Best Performance:**
 - `mistral:7b` - Excellent JSON generation, efficient (4.1GB), reliable structured output
@@ -202,11 +220,11 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 7. Interactive quiz presentation and scoring.
 8. **Quiz Reporting & Storage**: After quiz completion, user answers are analyzed, insights are generated by an LLM, and all quiz data (session, answers, report) is saved to the local SQLite database.
 
-### Privacy Design
-- All processing occurs locally on your machine
-- No data is sent to external services
-- Documents and questions remain private
-- Ollama models run offline
+### Hybrid Model Design
+- Document processing requires OpenAI API access for reliable embedding
+- Quiz generation can use either OpenAI models or local Ollama models
+- Document storage uses local ChromaDB for persistent access
+- Quiz reports and user data stored in local SQLite database
 
 ## 📋 Requirements Compliance
 
@@ -219,7 +237,7 @@ Are you struggling to memorize concepts for an exam or do you simply want to imp
 ✅ **Performance**: Optimized for responsiveness with progress indicators.  
 ✅ **Reliability**: Comprehensive error handling and fallback mechanisms.  
 ✅ **Usability**: Intuitive interface with helpful guidance.  
-✅ **Privacy**: 100% local processing for maximum data security.  
+✅ **Flexibility**: Hybrid approach with option to use local models for quiz generation.  
 ✅ **Architecture**: Clean, modular codebase structure.  
 
 ## 🛠️ Troubleshooting

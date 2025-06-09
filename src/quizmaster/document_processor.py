@@ -9,7 +9,7 @@ import re
 import logging
 import json
 import tiktoken
-from contextgem import Document as ContextGemDocument, DocumentLLM, StringConcept, Aspect
+from contextgem import Document as ContextGemDocument, DocumentLLM, StringConcept, NumericalConcept, BooleanConcept, Aspect
 
 # Configure logging to suppress pdfminer warnings
 pdfminer_logger = logging.getLogger('pdfminer')
@@ -18,6 +18,10 @@ pdfminer_logger.setLevel(logging.ERROR)
 # Specifically suppress pdfminer.pdfpage warnings
 pdfpage_logger = logging.getLogger('pdfminer.pdfpage')
 pdfpage_logger.setLevel(logging.ERROR)
+
+# Configure general logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class DocumentProcessor:
     def __init__(self, persist_directory: str = "documents"):
@@ -28,8 +32,28 @@ class DocumentProcessor:
         # Initialize ContextGem LLM - will be set when model is selected
         self.contextgem_llm = None
         self.current_model = None
-        self.contextgem_enabled = False  # Disable by default due to model compatibility issues
-        self.fallback_extraction_enabled = True  # Enable robust fallback concept extraction
+        self.contextgem_enabled = True  # Enable ContextGem by default
+        self.fallback_extraction_enabled = True  # Enable fallback extraction
+        self.openai_models = [
+            "gpt-4.1-nano",
+            "gpt-4o-mini"
+        ]
+        self.ollama_models = [
+            "mistral:7b",
+            "qwen2.5:7b",
+            "gemma2:9b",
+            "deepseek-coder:6.7b",
+            "codellama:7b",
+            "llama3.3:8b",
+            "极速3.3:70b",
+            "gemma3:9b",
+            "phi4:latest",
+            "deepseek-r1:latest",
+            "granite3.3:latest",
+            "llama3.1:8b",
+            "mistral-nemo:latest"
+        ]
+        self.available_models = self.openai_models + self.ollama_models
         
         # Token limits and chunking settings
         self.max_tokens = 6000  # Leave some buffer below 8192 limit
@@ -39,12 +63,28 @@ class DocumentProcessor:
         """Set the model for ContextGem extraction."""
         if model_name != self.current_model:
             self.current_model = model_name
-            self.contextgem_llm = DocumentLLM(
-                model=f"ollama/{model_name}",
-                api_key=os.environ.get("OLLAMA_API_KEY", "ollama"),
-                api_base="http://localhost:11434"
-            )
-            print(f"DocumentProcessor: Set model to {model_name}")
+            logger.info(f"DocumentProcessor: Attempting to set model to {model_name}")
+            if model_name in self.openai_models:
+                # Skip ContextGem initialization for OpenAI models
+                self.contextgem_llm = None # Ensure ContextGem is None for OpenAI
+                logger.info(f"DocumentProcessor: Set OpenAI model to {model_name}. ContextGem disabled.")
+            else:
+                # Initialize ContextGem for Ollama models
+                try:
+                    self.contextgem_llm = DocumentLLM(
+                        model=f"ollama/{model_name}",
+                        api_key=os.environ.get("OLLAMA_API_KEY", "ollama"), # Use OLLAMA_API_KEY if available, default to "ollama"
+                        api_base="http://localhost:11434"
+                    )
+                    logger.info(f"DocumentProcessor: Set Ollama model to {model_name}. ContextGem initialized.")
+                except Exception as e:
+                    self.contextgem_llm = None
+                    logger.error(f"DocumentProcessor: Failed to initialize ContextGem for {model_name}: {str(e)}", exc_info=True)
+                    logger.warning("DocumentProcessor: ContextGem is not available. Falling back to basic extraction.")
+                
+    def get_current_model(self) -> str:
+        """Get the currently set model."""
+        return self.current_model if self.current_model else "gpt-4.1-nano"
         
     def store_document(self, processed_doc: Dict) -> str:
         """Store processed document as JSON file and return its ID"""
@@ -131,22 +171,53 @@ class DocumentProcessor:
             raise ValueError(f"Error processing {file_format} file: {str(e)}")
 
     def intelligent_segmentation(self, text: str) -> List[Dict]:
-        """Segment document into logical units (sentences) with metadata and filter irrelevant content."""
-        # This method will be refactored to use ContextGem for more intelligent segmentation/extraction
-        # For now, keep a basic sentence segmentation for compatibility
-        segments = []
-        sentence_endings = r'[.!?]+\s+'
-        sentences = re.split(sentence_endings, text)
-        sentences = [s + (re.search(r'[.!?]', text[text.find(s) + len(s):]).group(0) if re.search(r'[.!?]', text[text.find(s) + len(s):]) else '') for s in sentences if s.strip()]
-        if not sentences and text.strip():
-            sentences = [text.strip()]
-        
-        for i, sentence in enumerate(sentences):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            segments.append({'text': sentence, 'sentence_number': i + 1, 'word_count': len(sentence.split())})
-        return segments
+        """Segment document into logical units with ContextGem or fallback to basic segmentation"""
+        if self.contextgem_llm is None:
+            logger.warning("ContextGem not available for intelligent segmentation, using basic segmentation.")
+            return self._basic_segmentation(text)
+            
+        try:
+            logger.info("Using ContextGem for intelligent segmentation.")
+            cg_doc = ContextGemDocument(raw_text=text)
+            
+            # Define aspects for segmentation
+            cg_doc.add_aspects([
+                Aspect(name="Chapter", description="A major chapter or section"),
+                Aspect(name="Paragraph", description="A coherent paragraph of text"),
+                Aspect(name="KeyPoint", description="An important point or idea")
+            ])
+            
+            # Extract structured segments
+            extracted_doc = self.contextgem_llm.extract_all(cg_doc)
+            
+            segments = []
+            if extracted_doc and hasattr(extracted_doc, 'aspects'):
+                for aspect in extracted_doc.aspects:
+                    if hasattr(aspect, 'extracted_items') and aspect.extracted_items:
+                        for item in aspect.extracted_items:
+                            if hasattr(item, 'value') and item.value:
+                                segments.append({
+                                    'text': item.value,
+                                    'type': aspect.name,
+                                    'sentence_number': len(segments) + 1,
+                                    'word_count': len(item.value.split()),
+                                    'metadata': {
+                                        'source_context': item.reference_sentences[0] if hasattr(item, 'reference_sentences') and item.reference_sentences else ""
+                                    }
+                                })
+            
+            # Fallback to basic segmentation if ContextGem returns nothing
+            if not segments:
+                logger.warning("ContextGem segmentation returned no segments, falling back to basic segmentation.")
+                return self._basic_segmentation(text)
+            
+            logger.info(f"ContextGem intelligent segmentation successful. Generated {len(segments)} segments.")
+            return segments
+            
+        except Exception as e:
+            logger.error(f"Error in ContextGem intelligent segmentation: {str(e)}", exc_info=True)
+            logger.warning("Falling back to basic segmentation.")
+            return self._basic_segmentation(text)
 
     def count_tokens(self, text: str) -> int:
         """Count approximate tokens in text."""
@@ -208,14 +279,32 @@ class DocumentProcessor:
     def process_chunk_with_contextgem(self, chunk_text: str, filename: str, file_format: str, chunk_index: int) -> List[Dict]:
         """Process a single chunk with ContextGem and return extracted concepts."""
         try:
-            print(f"Attempting ContextGem extraction for chunk {chunk_index}")
+            logger.info(f"Attempting ContextGem extraction for chunk {chunk_index}")
+            
+            if self.current_model in self.openai_models:
+                # Skip ContextGem for OpenAI models
+                logger.info("Skipping ContextGem extraction for OpenAI model.")
+                return []
+                
+            if not self.contextgem_llm:
+                logger.error("ContextGem LLM not initialized for extraction.")
+                return [] # Return empty list instead of raising error
+                
             cg_doc = ContextGemDocument(raw_text=chunk_text)
             
-            # Define concepts for extraction
+            # Define concepts for extraction from ContextGem docs
             cg_doc.add_concepts([
-                StringConcept(name="Key Definition", description="A key term or concept defined in the text."),
-                StringConcept(name="Important Fact", description="A significant piece of information or data."),
-                StringConcept(name="Main Idea", description="The central theme or argument of a section."),
+                StringConcept(name="Key Definition", description="A key term or concept defined in the text"), 
+                StringConcept(name="Important Fact", description="A significant piece of information or data"),
+                StringConcept(name="Main Idea", description="The central theme or argument of a section"),
+                NumericalConcept(name="Key Number", description="Important numerical data in the text"),
+                BooleanConcept(name="Has Important Fact", description="Whether the text contains an important fact")
+            ])
+            
+            # Define document aspects for better segmentation  
+            cg_doc.add_aspects([
+                Aspect(name="Section", description="A distinct section of the document"),
+                Aspect(name="Chapter", description="A major chapter or part of the document")
             ])
             
             # Extract information using ContextGem with timeout and error handling
@@ -242,12 +331,12 @@ class DocumentProcessor:
                                     }
                                 })
             
-            print(f"ContextGem extracted {len(extracted_concepts)} concepts from chunk {chunk_index}")
+            logger.info(f"ContextGem extracted {len(extracted_concepts)} concepts from chunk {chunk_index}")
             return extracted_concepts
             
         except Exception as e:
-            print(f"ContextGem extraction failed for chunk {chunk_index}: {str(e)}")
-            print("This is likely due to the model not producing valid JSON. Document processing will continue without ContextGem extraction.")
+            logger.error(f"ContextGem extraction failed for chunk {chunk_index}: {str(e)}", exc_info=True)
+            logger.warning("This is likely due to the model not producing valid JSON. Document processing will continue without ContextGem extraction for this chunk.")
             return []
 
     def extract_concepts_fallback(self, text: str, filename: str, file_format: str) -> List[Dict]:
@@ -260,7 +349,7 @@ class DocumentProcessor:
             all_concepts = []
             
             for chunk_index, chunk in enumerate(chunks):
-                print(f"Extracting concepts from chunk {chunk_index + 1}/{len(chunks)}")
+                logger.info(f"Attempting fallback concept extraction from chunk {chunk_index + 1}/{len(chunks)}")
                 
                 prompt = f"""Analyze the following text and extract key concepts. For each concept, provide:
 - The concept content/definition
@@ -295,16 +384,17 @@ Extract 5-10 key concepts from this text."""
                     response_text = response.choices[0].message.content
                     chunk_concepts = self._parse_concept_response(response_text, filename, file_format, chunk_index)
                     all_concepts.extend(chunk_concepts)
+                    logger.info(f"Fallback extraction found {len(chunk_concepts)} concepts in chunk {chunk_index + 1}.")
                     
                 except Exception as e:
-                    print(f"Error extracting concepts from chunk {chunk_index}: {str(e)}")
+                    logger.error(f"Error extracting concepts from chunk {chunk_index + 1}: {str(e)}", exc_info=True)
                     continue
             
-            print(f"Fallback extraction found {len(all_concepts)} concepts")
+            logger.info(f"Fallback extraction finished. Total concepts found: {len(all_concepts)}")
             return all_concepts
             
         except Exception as e:
-            print(f"Fallback concept extraction failed: {str(e)}")
+            logger.error(f"Fallback concept extraction failed: {str(e)}", exc_info=True)
             return []
     
     def _parse_concept_response(self, response_text: str, filename: str, file_format: str, chunk_index: int) -> List[Dict]:
@@ -363,71 +453,182 @@ Extract 5-10 key concepts from this text."""
         }
         return metadata
 
-    def process(self, file_content: bytes, filename: str) -> Dict:
-        """Process the document and return structured content."""
-        if not self.validate_file(filename):
-            raise ValueError(f"Unsupported file format. Supported formats: {', '.join(self.supported_formats)}")
-
-        file_format = os.path.splitext(filename)[1][1:].lower()
+    def process_chunk_with_openai(self, chunk_text: str, filename: str, file_format: str, chunk_index: int) -> List[Dict]:
+        """Process a chunk using OpenAI API with JSON response formatting."""
+        from litellm import completion
+        import json
         
         try:
-            # Convert to text
-            text = self.convert_to_text(file_content, file_format)
+            prompt = f"""Analyze the following text and extract key information in JSON format:
+{chunk_text}
+
+Return a JSON object with these fields:
+- "concepts": Array of objects with:
+  - "content": The extracted concept text
+  - "concept_name": One of ["Key Definition", "Important Fact", "Main Idea"]
+  - "source_sentence": Context sentence where concept appears
+- "aspects": Array of objects with:
+  - "name": One of ["Section", "Chapter"]
+  - "value": The section/chapter content
+
+Example response format:
+{{
+  "concepts": [
+    {{
+      "content": "Machine learning is...",
+      "concept_name": "Key Definition",
+      "source_sentence": "The text defines machine learning as..."
+    }}
+  ],
+  "aspects": [
+    {{
+      "name": "Section",
+      "value": "Introduction to AI"
+    }}
+  ]
+}}"""
+
+            response = completion(
+                model=self.current_model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                max_tokens=2000,
+                temperature=0.3
+            )
+            
+            # Parse and validate JSON
+            try:
+                result = json.loads(response.choices[0].message.content)
+                concepts = []
+                
+                # Process concepts
+                for concept in result.get("concepts", []):
+                    concepts.append({
+                        "content": concept.get("content", ""),
+                        "concept_name": concept.get("concept_name", "Important Fact"),
+                        "type": "concept",
+                        "source_sentence": concept.get("source_sentence", ""),
+                        "chunk_index": chunk_index,
+                        "metadata": {
+                            "filename": filename,
+                            "format": file_format,
+                            "extraction_method": "openai"
+                        }
+                    })
+                
+                return concepts
+                
+            except json.JSONDecodeError as e:
+                print(f"Invalid JSON from OpenAI: {str(e)}")
+                return []
+                
+        except Exception as e:
+            print(f"OpenAI processing failed: {str(e)}")
+            return []
+
+    def process(self, content: bytes, source: str) -> Dict:
+        """Process the document or text using appropriate method based on model type."""
+        logger.info(f"Starting document processing for source: {source}")
+        try:
+            # Determine if content is a file upload or direct text input
+            if os.path.exists(source):
+                # It's a file path
+                filename = os.path.basename(source)
+                if not self.validate_file(filename):
+                    raise ValueError(f"Unsupported file format. Supported formats: {', '.join(self.supported_formats)}")
+                
+                file_format = os.path.splitext(filename)[1][1:].lower()
+                with open(source, 'rb') as f:
+                    file_content = f.read()
+                text = self.convert_to_text(file_content, file_format)
+            else:
+                # It's direct text input
+                filename = "direct_input.txt"
+                file_format = "txt"
+                text = content.decode('utf-8') if isinstance(content, bytes) else content
             
             if not text.strip():
                 raise ValueError("The document appears to be empty or could not be processed.")
             
-            # Check if document needs to be chunked
             token_count = self.count_tokens(text)
-            print(f"Document token count: {token_count}")
+            logger.info(f"Document token count: {token_count}")
             
             extracted_concepts = []
             
-            # Try ContextGem extraction first, then fallback to robust method
-            if self.contextgem_enabled and self.contextgem_llm is not None:
-                print("ContextGem extraction enabled - attempting concept extraction")
+            if self.current_model in self.openai_models:
+                logger.info("Using OpenAI for document processing and concept extraction.")
                 if token_count <= self.max_tokens:
-                    # Process entire document at once
-                    print("Processing document as single chunk")
-                    extracted_concepts = self.process_chunk_with_contextgem(text, filename, file_format, 0)
+                    extracted_concepts = self.process_chunk_with_openai(text, filename, file_format, 0)
                 else:
-                    # Chunk the document and process each chunk
-                    print(f"Document too large ({token_count} tokens), chunking...")
                     chunks = self.chunk_text(text)
-                    print(f"Split into {len(chunks)} chunks")
-                    
+                    logger.info(f"Document chunked into {len(chunks)} chunks for OpenAI processing.")
                     for i, chunk in enumerate(chunks):
-                        print(f"Processing chunk {i+1}/{len(chunks)}")
-                        chunk_concepts = self.process_chunk_with_contextgem(chunk, filename, file_format, i)
-                        extracted_concepts.extend(chunk_concepts)
+                        concepts = self.process_chunk_with_openai(chunk, filename, file_format, i)
+                        extracted_concepts.extend(concepts)
+            else:
+                # Use ContextGem if initialized, otherwise fallback
+                if self.contextgem_llm:
+                    logger.info("Using ContextGem for document processing and concept extraction.")
+                    if token_count <= self.max_tokens:
+                        extracted_concepts = self.process_chunk_with_contextgem(text, filename, file_format, 0)
+                    else:
+                        chunks = self.chunk_text(text)
+                        logger.info(f"Document chunked into {len(chunks)} chunks for ContextGem processing.")
+                        for i, chunk in enumerate(chunks):
+                            concepts = self.process_chunk_with_contextgem(chunk, filename, file_format, i)
+                            extracted_concepts.extend(concepts)
+                
+                # Fallback extraction if ContextGem extraction failed or was not used
+                if not extracted_concepts and self.fallback_extraction_enabled: # Check if fallback is enabled
+                     logger.warning("ContextGem extraction did not yield concepts or was not used. Attempting fallback extraction.")
+                     extracted_concepts = self.extract_concepts_fallback(text, filename, file_format)
+                     if not extracted_concepts:
+                         logger.error("Fallback extraction also failed to extract concepts.")
+                elif not extracted_concepts and not self.fallback_extraction_enabled:
+                     logger.warning("ContextGem extraction did not yield concepts or was not used. Fallback extraction is disabled.")
+
+
+            if not extracted_concepts:
+                # Only raise error if no concepts were extracted by any method
+                raise ValueError("Failed to extract any concepts from the document using available methods.")
             
-            # Use fallback extraction if ContextGem is disabled or if we have a model available
-            if self.fallback_extraction_enabled and self.current_model and len(extracted_concepts) == 0:
-                print("Using robust fallback concept extraction")
-                extracted_concepts = self.extract_concepts_fallback(text, filename, file_format)
+            # Basic segmentation for all models (used for metadata and general structure)
+            segments = self._basic_segmentation(text)
+            logger.info(f"Basic segmentation resulted in {len(segments)} segments.")
             
-            # Enhanced metadata with ContextGem data
-            enhanced_metadata = self.extract_metadata(self.intelligent_segmentation(text))
-            enhanced_metadata.update({
+            # Extract metadata including word counts
+            metadata = self.extract_metadata(segments)
+            metadata.update({
                 'extracted_concepts_count': len(extracted_concepts),
-                'concept_types': list(set([concept['concept_name'] for concept in extracted_concepts])),
-                'contextgem_processed': True,
+                'concept_types': list(set([c['concept_name'] for c in extracted_concepts])),
                 'original_tokens': token_count,
                 'was_chunked': token_count > self.max_tokens,
-                'chunks_processed': len(self.chunk_text(text)) if token_count > self.max_tokens else 1
+                'processing_method': 'openai' if self.current_model in self.openai_models else ('contextgem' if self.contextgem_llm else 'fallback')
             })
+            
+            logger.info(f"Document processing complete. Extracted {len(extracted_concepts)} concepts.")
 
             return {
                 'content': text,
-                'segments': self.intelligent_segmentation(text),
-                'metadata': enhanced_metadata,
-                'filename': filename,
-                'format': file_format,
-                'extracted_concepts': extracted_concepts,  # ContextGem extracted data
+                'segments': segments,
+                'metadata': metadata,
+                'source': source,
+                'extracted_concepts': extracted_concepts,
             }
-            
         except Exception as e:
-            raise ValueError(f"Error processing document: {str(e)}")
+            # Log the error and re-raise with additional context
+            error_msg = f"Error processing document: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise ValueError(error_msg) from e
+
+    def _basic_segmentation(self, text: str) -> List[Dict]:
+        """Basic text segmentation fallback."""
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        return [{
+            'text': s.strip(),
+            'sentence_number': i+1,
+            'word_count': len(s.split())
+        } for i, s in enumerate(sentences) if s.strip()]
 
     def get_segments_by_section(self, processed_content: Dict, section_name: str) -> List[Dict]:
         """Filter segments by section name."""

@@ -3,6 +3,10 @@ from document_processor import DocumentProcessor
 from quiz_generator import QuizGenerator
 import os
 import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def main():
     st.set_page_config(
@@ -18,8 +22,8 @@ def main():
     if 'document_processor' not in st.session_state:
         st.session_state.document_processor = DocumentProcessor()
     
-    if 'quiz_generator' not in st.session_state:
-        st.session_state.quiz_generator = QuizGenerator()
+    # Always re-initialize QuizGenerator to pick up code changes
+    st.session_state.quiz_generator = QuizGenerator()
     
     if 'processed_content' not in st.session_state:
         st.session_state.processed_content = None
@@ -32,97 +36,159 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configuration")
         
-        # Model Selection
-        st.subheader("🤖 AI Model")
+        # Separate Model Selection for Document Processing (Embedding)
+        st.subheader("🤖 Embedding Model (Document Processing)")
+        st.caption("For extracting concepts and embedding documents. OpenAI models recommended.")
 
         MODEL_DESCRIPTIONS = {
-            "llama3.3:8b": "Meta's Llama 3.3: Latest generation, 8B parameters, strong all-rounder.",
-            "llama3.3:70b": "Meta's Llama 3.3: Latest generation, 70B parameters, for highly complex tasks.",
-            "gemma3:9b": "Google's Gemma 3: New generation model, 9B parameters, good for coding & reasoning.",
-            "phi4:latest": "Microsoft's Phi-4: Efficient and capable smaller language model.",
-            "deepseek-r1:latest": "DeepSeek-R1: Strong model from DeepSeek AI, particularly for coding.",
-            "granite3.3:latest": "IBM's Granite 3.3: Enterprise-focused model for various tasks.",
-            "llama3.1:8b": "Meta's Llama 3.1: Previous generation, 8B parameters, balanced performance.",
-            "mistral:7b": "⭐ RECOMMENDED: Mistral-7B - Excellent JSON generation, efficient (4.1GB), reliable structured output.",
-            "qwen2.5:7b": "⭐ RECOMMENDED: Qwen 2.5 - Strong JSON/structured output, multilingual, efficient (4.4GB).",
-            "deepseek-coder:6.7b": "🔧 JSON SPECIALIST: DeepSeek Coder - Code-focused, excellent structured formats (3.8GB).",
-            "codellama:7b": "🔧 JSON SPECIALIST: CodeLlama - Meta's coding model, strong with structured data (3.8GB).",
-            "gemma2:9b": "⭐ RECOMMENDED: Gemma2-9B - Google's instruction-following model, good JSON reliability (5.4GB)."
-            # Add more descriptions as new models are verified and added
+            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Lightweight but powerful model optimized for efficiency",
+            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Specialized for structured output and JSON generation",
+            # Include local models as fallback
+            "llama3.3:8b": "Meta's Llama 3.3: 8B parameters (fallback)",
+            "mistral:7b": "Mistral-7B - Efficient but not recommended for embedding"
         }
 
-        available_models = st.session_state.quiz_generator.get_available_models()
-        current_model = st.session_state.quiz_generator.get_current_model()
+        # Get current embedding model
+        current_embedding_model = st.session_state.document_processor.get_current_model()
         
-        # Get locally available models
-        local_models = st.session_state.quiz_generator.get_local_models()
+        # Enhanced embedding model selection with status indicators
+        embedding_model_options = []
         
-        # Create display options with status indicators and add default option
-        DEFAULT_PROMPT = "Please select a model first"
-        model_options = [DEFAULT_PROMPT]
-        for model in available_models:
-            if model in local_models:
-                model_options.append(f"✅ {model} (Local)")
-            else:
-                model_options.append(f"📥 {model} (Pull needed)")
+        # Only add OpenAI models for embedding
+        for model in ["gpt-4.1-nano", "gpt-4o-mini"]:
+            status = "⚡ API"
+            if not os.environ.get("OPENAI_API_KEY"):
+                status += " (key missing)"
+            embedding_model_options.append({
+                "name": model,
+                "display": f"{model} - {status}",
+                "description": MODEL_DESCRIPTIONS.get(model, "No description")
+            })
         
-        # Always default to the "Please select a model first" option
-        initial_index = 0
-        
-        selected_display = st.selectbox(
-            "Select Ollama Model",
-            model_options,
-            index=initial_index,
-            help="✅ = Available locally, 📥 = Will be downloaded automatically"
+        # Create selectbox with custom formatting
+        selected_option = st.selectbox(
+            "Select Embedding Model",
+            embedding_model_options,
+            format_func=lambda x: x["display"],
+            index=next((i for i, m in enumerate(embedding_model_options) if m["name"] == current_embedding_model), 0),
+            key="embedding_model_select"
         )
+        embedding_model = selected_option["name"]
         
-        # Track if a valid model is selected
-        is_model_selected = selected_display != DEFAULT_PROMPT
+        # Show model description
+        st.caption(selected_option["description"])
         
-        # Extract model name only if not default prompt
-        if selected_display != DEFAULT_PROMPT:
-            selected_model = selected_display.split(" ")[1]
-            
-            # Display model description
-            model_desc = MODEL_DESCRIPTIONS.get(selected_model, "No description available for this model.")
-            st.caption(model_desc)
-            
-            if selected_model != current_model:
-                with st.spinner(f"Setting up model {selected_model}..."):
-                    try:
-                        # Check if model needs to be pulled
-                        if not st.session_state.quiz_generator.is_model_available(selected_model):
-                            st.info(f"📥 Model {selected_model} not found locally. Downloading...")
-                        
-                        # Create progress placeholder
-                        progress_placeholder = st.empty()
-                        # Initial text like "Pulling model..." will be set by pull_model itself.
-                        
-                        # Pull the model, passing the placeholder
-                        success = st.session_state.quiz_generator.pull_model(selected_model, progress_placeholder=progress_placeholder)
-                        
-                        if success:
-                            # Success message on placeholder is handled by pull_model
-                            st.session_state.quiz_generator.set_model(selected_model) # Use set_model to initialize LLM/Embeddings
-                            st.session_state.document_processor.set_model(selected_model) # Set model for document processing too
-                            st.success(f"Model changed to {selected_model}") # General success for model change
-                        else:
-                            # Error message on placeholder is handled by pull_model
-                            # Display a general error message for the Streamlit app UI
-                            st.error(f"Failed to set up model {selected_model}. Please check logs or Ollama status.")
-                        
-                    except Exception as e:
-                        st.error(f"Error setting model: {str(e)}")
-        
-        # Test Connection (disabled when no model selected)
-        if st.button("🔗 Test Ollama Connection", disabled=not is_model_selected):
-            with st.spinner("Testing connection..."):
-                if st.session_state.quiz_generator.test_ollama_connection():
-                    st.success("✅ Ollama connection successful!")
-                else:
-                    st.error("❌ Ollama connection failed. Make sure Ollama is running on localhost:11434")
+        if st.button("Apply Embedding Model", key="apply_embedding_model"):
+            if embedding_model.startswith('gpt-') and not os.environ.get("OPENAI_API_KEY"):
+                st.error("OpenAI API key not found in .env file")
+            else:
+                st.session_state.document_processor.set_model(embedding_model)
+                st.success(f"Embedding model set to {embedding_model}")
         
         st.divider()
+        
+        # Separate Model Selection for Quiz Generation
+        st.subheader("🤖 Quiz Generation Model")
+        st.caption("For generating quiz questions. Local models recommended.")
+
+        # Enhanced model descriptions with clearer status indicators
+        QUIZ_MODEL_DESCRIPTIONS = {
+            "llama3.3:8b": "⭐ RECOMMENDED: Meta's Llama 3.3, 8B parameters",
+            "mistral:7b": "⭐ RECOMMENDED: Efficient JSON generation (4.1GB)",
+            "qwen2.5:7b": "⭐ RECOMMENDED: Strong JSON/structured output, multilingual",
+            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Requires API key",
+            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Requires API key"
+        }
+        
+        # Get current model and local availability
+        current_quiz_model = st.session_state.quiz_generator.get_current_model()
+        local_models = st.session_state.quiz_generator.get_local_models()
+        
+        # Create model display options with status indicators
+        quiz_model_options = []
+        for model in st.session_state.quiz_generator.get_available_models():
+            if model.startswith('gpt-'):
+                # OpenAI models
+                status = "⚡ API"
+                if not os.environ.get("OPENAI_API_KEY"):
+                    status += " (API key missing)"
+            else:
+                # Ollama models
+                if model in local_models:
+                    status = "✅ Local"
+                else:
+                    status = "📥 To be pulled"
+                
+            quiz_model_options.append({
+                "name": model,
+                "display": f"{model} - {status}",
+                "description": QUIZ_MODEL_DESCRIPTIONS.get(model, "No description")
+            })
+        
+        # Create selectbox with custom formatting
+        selected_option = st.selectbox(
+            "Select Quiz Model",
+            quiz_model_options,
+            format_func=lambda x: x["display"],
+            index=next((i for i, m in enumerate(quiz_model_options) if m["name"] == current_quiz_model), 0),
+            key="quiz_model_select"
+        )
+        quiz_model = selected_option["name"]
+        
+        # Show model description
+        st.caption(selected_option["description"])
+        
+        # Check if current model is an OpenAI or Ollama model
+        is_openai_model = quiz_model in st.session_state.quiz_generator.openai_models
+        
+        # Use different layouts based on model type
+        if is_openai_model:
+            # For OpenAI models, just show the Apply button
+            if st.button("Apply Quiz Model", key="apply_quiz_model", use_container_width=True):
+                if not os.environ.get("OPENAI_API_KEY"):
+                    st.error("OpenAI API key not found in .env file")
+                else:
+                    with st.spinner(f"Setting up quiz model {quiz_model}..."):
+                        try:
+                            st.session_state.quiz_generator.set_model(quiz_model)
+                            st.success(f"Quiz model set to {quiz_model}")
+                        except Exception as e:
+                            st.error(f"Error setting quiz model: {str(e)}")
+        else:
+            # For Ollama models, show Apply and Test buttons side by side
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("Apply Quiz Model", key="apply_quiz_model", use_container_width=True):
+                    with st.spinner(f"Setting up quiz model {quiz_model}..."):
+                        try:
+                            # For local models, check if available
+                            if quiz_model not in local_models:
+                                with st.status(f"📥 Downloading {quiz_model}...", expanded=True) as status:
+                                    status.write("Starting model download...")
+                                    success = st.session_state.quiz_generator.pull_model(quiz_model)
+                                    if success:
+                                        status.update(label="✅ Download completed!", state="complete", expanded=False)
+                                    else:
+                                        status.update(label="❌ Download failed", state="error")
+                                        st.error(f"Failed to download {quiz_model}")
+                                        st.stop()
+                            
+                            st.session_state.quiz_generator.set_model(quiz_model)
+                            st.success(f"Quiz model set to {quiz_model}")
+                        except Exception as e:
+                            st.error(f"Error setting quiz model: {str(e)}")
+            
+            with col2:
+                # Test Connection for Quiz Model
+                if st.button("🔗 Test Ollama", key="test_quiz_connection", use_container_width=True):
+                    with st.spinner("Testing connection..."):
+                        if st.session_state.quiz_generator.test_ollama_connection():
+                            st.success("✅ Connection successful!")
+                        else:
+                            st.error("❌ Connection failed. Make sure Ollama is running")
+
+        # Removed duplicate model selection code - using separate models now
         
         # Quiz Settings
         st.subheader("📋 Quiz Settings")
@@ -145,28 +211,8 @@ def main():
             help="Enter keywords to focus on specific sections"
         )
         
-        st.divider()
-        
-        # Concept Extraction Settings
-        st.subheader("🧠 Concept Extraction")
-        use_concept_extraction = st.checkbox(
-            "Enable Concept Extraction",
-            value=True,
-            help="Extract key concepts to improve quiz quality. Uses robust fallback method without JSON requirements."
-        )
-        
-        if use_concept_extraction:
-            st.caption("📚 Will extract Key Definitions, Important Facts, and Main Ideas using your selected model")
-            # Update document processor settings
-            if hasattr(st.session_state, 'document_processor'):
-                st.session_state.document_processor.fallback_extraction_enabled = True
-        else:
-            st.caption("⚡ Faster processing without concept extraction")
-            # Update document processor settings
-            if hasattr(st.session_state, 'document_processor'):
-                st.session_state.document_processor.fallback_extraction_enabled = False
-        
-        st.divider()
+        # Removed unused "Enable Concept Extraction" checkbox
+        # Concept extraction is always enabled in the DocumentProcessor
         
         # Document Info
         if st.session_state.processed_content:
@@ -349,15 +395,27 @@ def main():
         if not question_types: # question_types is from sidebar st.multiselect
             st.warning("⚠️ Please select at least one question type from the sidebar settings.")
         else:
-            if st.button("🚀 Generate Quiz", type="primary", disabled=not is_model_selected or not question_types):
+            if st.button("🚀 Generate Quiz", type="primary", disabled=not question_types):
                 try:
                     with st.spinner("Generating quiz questions..."):
                         gen_progress_bar = st.progress(0)
                         
                         gen_progress_bar.progress(10)
-                        if not st.session_state.quiz_generator.test_ollama_connection():
-                            st.error("❌ Cannot connect to Ollama. Please make sure it's running.")
-                            st.stop()
+                        
+                        # Check connection based on model type
+                        current_model = st.session_state.quiz_generator.get_current_model()
+                        is_openai_model = current_model in st.session_state.quiz_generator.openai_models
+                        
+                        if is_openai_model:
+                            # For OpenAI models, check API key
+                            if not os.environ.get("OPENAI_API_KEY"):
+                                st.error("❌ OpenAI API key not found. Please add it to your .env file.")
+                                st.stop()
+                        else:
+                            # For Ollama models, test connection
+                            if not st.session_state.quiz_generator.test_ollama_connection():
+                                st.error("❌ Cannot connect to Ollama. Please make sure it's running.")
+                                st.stop()
                         
                         gen_progress_bar.progress(30)
                         quiz_data = st.session_state.quiz_generator.generate(

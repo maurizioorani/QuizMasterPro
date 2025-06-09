@@ -8502,7 +8502,7 @@
       "word_count": 18
     },
     {
-      "text": "Creating test database for alias 'default'.",
+      "text": "Creating test database for alias 'default'...",
       "sentence_number": 1701,
       "word_count": 6
     },
@@ -8512,2008 +8512,3006 @@
       "word_count": 7
     },
     {
-      "text": "----------------------------------------------------------------------\nRan 1 test in 0.002s\nOK\nDestroying test database for alias 'default'.",
+      "text": ".",
       "sentence_number": 1703,
+      "word_count": 1
+    },
+    {
+      "text": "----------------------------------------------------------------------\nRan 1 test in 0.002s\nOK\nDestroying test database for alias 'default'...",
+      "sentence_number": 1704,
       "word_count": 13
     },
     {
       "text": "The test shows no errors!",
-      "sentence_number": 1704,
+      "sentence_number": 1705,
       "word_count": 5
     },
     {
       "text": "Still, the output ran only one test when we have two\nfunctions.",
-      "sentence_number": 1705,
+      "sentence_number": 1706,
       "word_count": 12
     },
     {
       "text": "Note that we set the test to only check functions that start with the\nname test*!",
-      "sentence_number": 1706,
+      "sentence_number": 1707,
       "word_count": 16
     },
     {
       "text": "Now, let’s check our URLs, views, and templates as we did in chapter 3.",
-      "sentence_number": 1707,
+      "sentence_number": 1708,
       "word_count": 14
     },
     {
       "text": "We\nwill also check\nURL for / and a 200 HTTP status code.",
-      "sentence_number": 1708,
+      "sentence_number": 1709,
       "word_count": 13
     },
     {
       "text": "URL for “home”.",
-      "sentence_number": 1709,
+      "sentence_number": 1710,
       "word_count": 3
     },
     {
       "text": "The home page shows “home.html” content correctly\nSince only one webpage is involved in this project, all of these tests may be\nincorporated into the already PostTests class.",
-      "sentence_number": 1710,
+      "sentence_number": 1711,
       "word_count": 28
     },
     {
       "text": "In the header, select \"import\nreverse,\" then add the tests as seen below.",
-      "sentence_number": 1711,
+      "sentence_number": 1712,
       "word_count": 13
     },
     {
       "text": "from django.test import TestCase\nfrom django.urls import reverse\nfrom .models import Post\nclass PostTests(TestCase):\n@classmethod\ndef setUpTestData(cls):\ncls.post = Post.objects.create(text=\"This is a test!\")\ndef test_model_content(self):\nself.assertEqual(self.post.text, \"This is a test!\")\ndef test_url_exists_at_correct_location(self):\nresponse = self.client.get(\"/\")\nself.assertEqual(response.status_code, 200)\ndef test_url_available_by_name(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertEqual(response.status_code, 200)\ndef test_template_name_correct(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertTemplateUsed(response, \"home.html\")\ndef test_template_content(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertContains(response, \"This is a test!\")\nWith this, run the test again:\npython manage.py test\nFound 5 test(s).",
-      "sentence_number": 1712,
+      "sentence_number": 1713,
       "word_count": 73
     },
     {
-      "text": "Creating test database for alias 'default'.",
-      "sentence_number": 1713,
+      "text": "Creating test database for alias 'default'...",
+      "sentence_number": 1714,
       "word_count": 6
     },
     {
       "text": "System check identified no issues (0 silenced).",
-      "sentence_number": 1714,
+      "sentence_number": 1715,
       "word_count": 7
     },
     {
-      "text": "----------------------------------------------------------------------\nRan 5 tests in 0.131s\nOK\nDestroying test database for alias 'default'.",
-      "sentence_number": 1715,
+      "text": ".....",
+      "sentence_number": 1716,
+      "word_count": 1
+    },
+    {
+      "text": "----------------------------------------------------------------------\nRan 5 tests in 0.131s\nOK\nDestroying test database for alias 'default'...",
+      "sentence_number": 1717,
       "word_count": 13
     },
     {
       "text": "In the previous chapter, we discussed how unit tests work best when they are\nself-contained and highly verbose.",
-      "sentence_number": 1716,
+      "sentence_number": 1718,
       "word_count": 18
     },
     {
       "text": "However, the last three tests are testing\nthat the homepage works as expected: it uses the correct URL name, the\nintended template name, and contains expected content.",
-      "sentence_number": 1717,
+      "sentence_number": 1719,
       "word_count": 27
     },
     {
       "text": "We can combine\nthese three tests into one single unit test, test_homepage.",
-      "sentence_number": 1718,
-      "word_count": 12
-    },
-    {
-      "text": "from django.test import TestCase\nfrom django.urls import reverse\nfrom .models import Post\nclass PostTests(TestCase):\n@classmethod\ndef setUpTestData(cls):\ncls.post = Post.objects.create(text=\"This is a test!\")\ndef test_model_content(self):\nself.assertEqual(self.post.text, \"This is a test!\")\ndef test_url_exists_at_correct_location(self):\nresponse = self.client.get(\"/\")\nself.assertEqual(response.status_code, 200)\ndef test_homepage(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertEqual(response.status_code, 200)\nself.assertTemplateUsed(response, \"home.html\")\nself.assertContains(response, \"This is a test!\")\nWe want our test suite to cover as much of the code as feasible while still\nbeing straightforward to reason about (both the error messages and the testing\ncode itself).",
-      "sentence_number": 1719,
-      "word_count": 81
-    },
-    {
-      "text": "This revision is much simpler to read and comprehend, in my\nopinion.",
       "sentence_number": 1720,
       "word_count": 12
     },
     {
-      "text": "Now that we've finished making changes to the code for testing, we can\ncommit them to git.",
+      "text": "from django.test import TestCase\nfrom django.urls import reverse\nfrom .models import Post\nclass PostTests(TestCase):\n@classmethod\ndef setUpTestData(cls):\ncls.post = Post.objects.create(text=\"This is a test!\")\ndef test_model_content(self):\nself.assertEqual(self.post.text, \"This is a test!\")\ndef test_url_exists_at_correct_location(self):\nresponse = self.client.get(\"/\")\nself.assertEqual(response.status_code, 200)\ndef test_homepage(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertEqual(response.status_code, 200)\nself.assertTemplateUsed(response, \"home.html\")\nself.assertContains(response, \"This is a test!\")\nWe want our test suite to cover as much of the code as feasible while still\nbeing straightforward to reason about (both the error messages and the testing\ncode itself).",
       "sentence_number": 1721,
+      "word_count": 81
+    },
+    {
+      "text": "This revision is much simpler to read and comprehend, in my\nopinion.",
+      "sentence_number": 1722,
+      "word_count": 12
+    },
+    {
+      "text": "Now that we've finished making changes to the code for testing, we can\ncommit them to git.",
+      "sentence_number": 1723,
       "word_count": 17
     },
     {
       "text": "(.venv) > git add -A\n(.venv) > git commit -m \"added tests\"\n[main 89ba70d] added tests\n2 files changed, 20 insertions(+), 1 deletion(-)\ncreate mode 100644 posts/__pycache__/tests.cpython-310.pyc\nStoring to GitHub\nWe should use GitHub to host our source code.",
-      "sentence_number": 1722,
+      "sentence_number": 1724,
       "word_count": 39
     },
     {
       "text": "Message-board is the name of\nthe repository you will be creating, and if you haven't already done so, log\ninto GitHub and sign up for an account.",
-      "sentence_number": 1723,
+      "sentence_number": 1725,
       "word_count": 27
     },
     {
       "text": "For more discreet communication,\nchoose the \"Private\" option.",
-      "sentence_number": 1724,
+      "sentence_number": 1726,
       "word_count": 8
     },
     {
       "text": "The option to \"or push an existing repository from the command line\" is at\nthe bottom of the following page.",
-      "sentence_number": 1725,
+      "sentence_number": 1727,
       "word_count": 20
     },
     {
       "text": "If you replace my username with your own\nGitHub username, the two commands there should look like the next and may\nbe copied and pasted into your terminal:\ngit remote add origin https://github.com/MacVicquayns/message-board.git\ngit branch -M main\ngit push -u origin main\nSetup Heroku\nBy now, you should have a Heroku account.",
-      "sentence_number": 1726,
+      "sentence_number": 1728,
       "word_count": 52
     },
     {
       "text": "The following is our deployment\nchecklist:\ninstall Gunicorn\nsetup requirements.txt\nedit the ALLOWED_HOSTS in settings.py\ncreate Procfile\ncreate runtime.txt\nUse Pip to install Gunicorn.",
-      "sentence_number": 1727,
+      "sentence_number": 1729,
       "word_count": 24
     },
     {
       "text": "python -m pip install gunicorn==20.1.0\nIn the past, we would simply set ALLOWED HOSTS to * to accept all hosts,\nbut this proved to be a flawed and potentially harmful shortcut.",
-      "sentence_number": 1728,
+      "sentence_number": 1730,
       "word_count": 31
     },
     {
       "text": "Our level of\nspecificity may and should be increased.",
-      "sentence_number": 1729,
+      "sentence_number": 1731,
       "word_count": 9
     },
     {
       "text": "Django can be used on either\nlocalhost:8000 or 127.0.0.1:8000.",
-      "sentence_number": 1730,
+      "sentence_number": 1732,
       "word_count": 9
     },
     {
       "text": "Having used Heroku before, we know that\nall Heroku sites will have the.herokuapp.com extension.",
-      "sentence_number": 1731,
+      "sentence_number": 1733,
       "word_count": 14
     },
     {
       "text": "All three hosts may\nbe included in the ALLOWED HOSTS setting.",
-      "sentence_number": 1732,
+      "sentence_number": 1734,
       "word_count": 11
     },
     {
       "text": "Open your settings.py in the\ndjango_project folder and update the ALLOWED_HOSTS list with the\nfollowing:\n\".herokuapp.com\", \"localhost\", \"127.0.0.1\"\nNow, create your Procfile and put this code in it:\nweb: gunicorn django_project.wsgi --log-file -\nLastly, create a runtime.txt file in the base folder like Procfile.",
-      "sentence_number": 1733,
+      "sentence_number": 1735,
       "word_count": 44
     },
     {
       "text": "And populate\nwith this line:\npython 3.10.1\nNow, commit the new changes to git.",
-      "sentence_number": 1734,
+      "sentence_number": 1736,
       "word_count": 14
     },
     {
       "text": "Deploy to Heroku\nFirst, log in to your Heroku account with the heroku login command.",
-      "sentence_number": 1735,
+      "sentence_number": 1737,
       "word_count": 15
     },
     {
       "text": "Then\nuse the heroku create to create a new server.",
-      "sentence_number": 1736,
-      "word_count": 10
-    },
-    {
-      "text": "Type in the following to tell Heroku to ignore static pages.",
-      "sentence_number": 1737,
-      "word_count": 11
-    },
-    {
-      "text": "This is skipped\nwhen you are creating a blog app.",
       "sentence_number": 1738,
       "word_count": 10
     },
     {
-      "text": "heroku config:set DISABLE_COLLECTSTATIC=1\nAfter that, we push the code to Heroku.",
+      "text": "Type in the following to tell Heroku to ignore static pages.",
       "sentence_number": 1739,
       "word_count": 11
     },
     {
-      "text": "git push heroku main\nThen we scale it.",
+      "text": "This is skipped\nwhen you are creating a blog app.",
       "sentence_number": 1740,
+      "word_count": 10
+    },
+    {
+      "text": "heroku config:set DISABLE_COLLECTSTATIC=1\nAfter that, we push the code to Heroku.",
+      "sentence_number": 1741,
+      "word_count": 11
+    },
+    {
+      "text": "git push heroku main\nThen we scale it.",
+      "sentence_number": 1742,
       "word_count": 8
     },
     {
       "text": "heroku ps:scale web=1\nFrom the command line, type heroku open to open the new project's URL in a\nnew browser window.",
-      "sentence_number": 1741,
+      "sentence_number": 1743,
       "word_count": 21
     },
     {
       "text": "Closing the present virtual environment is as simple as\ntyping \"deactivate\" at the prompt.",
-      "sentence_number": 1742,
+      "sentence_number": 1744,
       "word_count": 14
     },
     {
-      "text": "That’s it.",
-      "sentence_number": 1743,
-      "word_count": 2
-    },
-    {
-      "text": "We have built a complete forum message board app.",
-      "sentence_number": 1744,
-      "word_count": 9
-    },
-    {
-      "text": "Well done.",
+      "text": "That’s it!",
       "sentence_number": 1745,
       "word_count": 2
     },
     {
-      "text": "In\nthe next section, we will create a blog app.",
+      "text": "We have built a complete forum message board app.",
       "sentence_number": 1746,
+      "word_count": 9
+    },
+    {
+      "text": "Well done.",
+      "sentence_number": 1747,
+      "word_count": 2
+    },
+    {
+      "text": "In\nthe next section, we will create a blog app.",
+      "sentence_number": 1748,
       "word_count": 10
     },
     {
       "text": "C 5 – B A\nHAPTER LOG PP\nThis chapter will focus on developing a Blog application where users may\nadd, modify, and remove posts.",
-      "sentence_number": 1747,
+      "sentence_number": 1749,
       "word_count": 25
     },
     {
       "text": "Each blog post will have its own detail page in addition to being shown on\nthe homepage.",
-      "sentence_number": 1748,
+      "sentence_number": 1750,
       "word_count": 17
     },
     {
       "text": "Also covered will be the basics of styling using CSS and how\nDjango handles static files.",
-      "sentence_number": 1749,
+      "sentence_number": 1751,
       "word_count": 16
     },
     {
       "text": "Initial Set Up\nThe first six steps we take in our development course have not changed.",
-      "sentence_number": 1750,
+      "sentence_number": 1752,
       "word_count": 16
     },
     {
       "text": "Set\nup the new Django project in the following steps:\ncreate a new base folder and call it blog\nstart a new virtual and install Django\nstart a new Django project and call it django_project\nstart a new app and call it blog\nmigrate the code to set up the database\nedit the settings.py file with the correct details.",
-      "sentence_number": 1751,
+      "sentence_number": 1753,
       "word_count": 59
     },
     {
       "text": "Let’s get started.",
-      "sentence_number": 1752,
-      "word_count": 3
-    },
-    {
-      "text": "This is the sequence for Windows:\nThis is for MacOs:\nNow go to the settings.py file and update the INSTALLED_APPS section:\nNow, run the server and check the local url.",
-      "sentence_number": 1753,
-      "word_count": 30
-    },
-    {
-      "text": "Initial setup complete!",
       "sentence_number": 1754,
       "word_count": 3
     },
     {
-      "text": "Well done.",
+      "text": "This is the sequence for Windows:\nThis is for MacOs:\nNow go to the settings.py file and update the INSTALLED_APPS section:\nNow, run the server and check the local url.",
       "sentence_number": 1755,
+      "word_count": 30
+    },
+    {
+      "text": "Initial setup complete!",
+      "sentence_number": 1756,
+      "word_count": 3
+    },
+    {
+      "text": "Well done!",
+      "sentence_number": 1757,
       "word_count": 2
     },
     {
       "text": "Database Models\nWhat are the standard features of a blog platform?",
-      "sentence_number": 1756,
+      "sentence_number": 1758,
       "word_count": 11
     },
     {
       "text": "Say each post contains a\nheading, author name, and article.",
-      "sentence_number": 1757,
+      "sentence_number": 1759,
       "word_count": 10
     },
     {
       "text": "The following code can be pasted into the\nmodels.py file in the blog folder to create a database model:\nfrom django.db import models\nfrom django.urls import reverse\nclass Post(models.Model):\ntitle = models.CharField(max_length=200)\nauthor = models.ForeignKey(\n\"auth.User\",\non_delete=models.CASCADE,\n)\nbody = models.TextField()\ndef __str__(self):\nreturn self.title\ndef get_absolute_url(self):\nreturn reverse(\"post_detail\", kwargs={\"pk\": self.pk})\nOnce the new database model is complete, a migration record can be made,\nand an update may be made to the database.",
-      "sentence_number": 1758,
+      "sentence_number": 1760,
       "word_count": 73
     },
     {
       "text": "Press Ctrl + c to terminate the server.",
-      "sentence_number": 1759,
+      "sentence_number": 1761,
       "word_count": 8
     },
     {
       "text": "You can finish this two-stage procedure by following the instructions below.",
-      "sentence_number": 1760,
+      "sentence_number": 1762,
       "word_count": 11
     },
     {
       "text": "python manage.py makemigrations blog\npython manage.py migrate\nWith these lines, we have created our database.",
-      "sentence_number": 1761,
+      "sentence_number": 1763,
       "word_count": 15
     },
     {
       "text": "Admin Access\nHow will we access our data?",
-      "sentence_number": 1762,
+      "sentence_number": 1764,
       "word_count": 8
     },
     {
       "text": "We need to create Django's backend admin.",
-      "sentence_number": 1763,
+      "sentence_number": 1765,
       "word_count": 7
     },
     {
       "text": "Type the following command and then follow the prompts to create a\nsuperuser account with a unique email address and password.",
-      "sentence_number": 1764,
+      "sentence_number": 1766,
       "word_count": 21
     },
     {
       "text": "For security\nreasons, your password will not display as you type it.",
-      "sentence_number": 1765,
+      "sentence_number": 1767,
       "word_count": 12
     },
     {
       "text": "python manage.py createsuperuser\nNow, we update the admin.py file.",
-      "sentence_number": 1766,
+      "sentence_number": 1768,
       "word_count": 9
     },
     {
       "text": "from django.contrib import admin\nfrom .models import Post\nadmin.site.register(Post)\nLet's add on a couple more blog posts.",
-      "sentence_number": 1767,
+      "sentence_number": 1769,
       "word_count": 17
     },
     {
       "text": "To add a new post, select the + Add\nbutton that appears next to Posts.",
-      "sentence_number": 1768,
+      "sentence_number": 1770,
       "word_count": 15
     },
     {
       "text": "All model fields are mandatory by default.",
-      "sentence_number": 1769,
+      "sentence_number": 1771,
       "word_count": 7
     },
     {
       "text": "Therefore be careful to give each post an \"author\" tag.",
-      "sentence_number": 1770,
+      "sentence_number": 1772,
       "word_count": 10
     },
     {
       "text": "In order to display the data on our web application, we must now develop the\nviews, URLs, and templates required to interact with the database.",
-      "sentence_number": 1771,
+      "sentence_number": 1773,
       "word_count": 25
     },
     {
       "text": "URLs\nTo achieve this, we will first configure our urls.py file in the django_project\nfolder, as we have done in previous chapters, and then our app-level blog\nfolder’s urls.py file.",
-      "sentence_number": 1772,
+      "sentence_number": 1774,
       "word_count": 30
     },
     {
       "text": "Make a new file in the blog app named urls.py and paste the following into it\nusing your text editor.",
-      "sentence_number": 1773,
+      "sentence_number": 1775,
       "word_count": 20
     },
     {
       "text": "from django.urls import path\nfrom .views import BlogListView\nurlpatterns = [\npath(\"\", BlogListView.as_view(), name=\"home\"),\n]\nWe imported the views we will do later.",
-      "sentence_number": 1774,
+      "sentence_number": 1776,
       "word_count": 23
     },
     {
       "text": "We give it a name, home so that we\ncan use it in our views later on, and the empty string (\"\") instructs Python to\nmatch all values.",
-      "sentence_number": 1775,
+      "sentence_number": 1777,
       "word_count": 28
     },
     {
       "text": "Although giving each URL a name isn't required, it's a good idea to help keep\ntrack of them as your list of URLs expands.",
-      "sentence_number": 1776,
-      "word_count": 24
-    },
-    {
-      "text": "We also need to edit the urls.py file in the django_project folder so that it will\nsend all blog app requests there.",
-      "sentence_number": 1777,
-      "word_count": 22
-    },
-    {
-      "text": "from django.contrib import admin\nfrom django.urls import path, include\nurlpatterns = [\npath(\"admin/\", admin.site.urls),\npath(\"\", include(\"blog.urls\")),\n]\nViews\nWe will be using class-based views.",
       "sentence_number": 1778,
       "word_count": 24
     },
     {
-      "text": "Just a few lines of code in our views file,\nand we'll be able to see the results of our Post model in a ListView.",
+      "text": "We also need to edit the urls.py file in the django_project folder so that it will\nsend all blog app requests there.",
       "sentence_number": 1779,
+      "word_count": 22
+    },
+    {
+      "text": "from django.contrib import admin\nfrom django.urls import path, include\nurlpatterns = [\npath(\"admin/\", admin.site.urls),\npath(\"\", include(\"blog.urls\")),\n]\nViews\nWe will be using class-based views.",
+      "sentence_number": 1780,
+      "word_count": 24
+    },
+    {
+      "text": "Just a few lines of code in our views file,\nand we'll be able to see the results of our Post model in a ListView.",
+      "sentence_number": 1781,
       "word_count": 25
     },
     {
       "text": "from django.shortcuts import render\n# Create your views here.",
-      "sentence_number": 1780,
+      "sentence_number": 1782,
       "word_count": 9
     },
     {
       "text": "from django.views.generic import ListView\nfrom .models import Post\nclass BlogListView(ListView):\nmodel = Post\ntemplate_name = \"home.html\"\nTemplates\nNow that we have finished with our URLs and views, we can go on to the\nnext piece of the jigsaw, which is the templates.",
-      "sentence_number": 1781,
+      "sentence_number": 1783,
       "word_count": 42
     },
     {
       "text": "Previously in Chapter 4, we\nlearned that we can keep our code tidy by adopting from other templates.",
-      "sentence_number": 1782,
+      "sentence_number": 1784,
       "word_count": 18
     },
     {
       "text": "Therefore, we'll begin with a base.html file and an inherited home.html file.",
-      "sentence_number": 1783,
+      "sentence_number": 1785,
       "word_count": 12
     },
     {
       "text": "Next, we'll add templates for making and revising blog articles, and those\nmay all derive from base.html.",
-      "sentence_number": 1784,
+      "sentence_number": 1786,
       "word_count": 17
     },
     {
       "text": "We should begin by making a folder to store our new template files.",
-      "sentence_number": 1785,
+      "sentence_number": 1787,
       "word_count": 13
     },
     {
       "text": "So, stop\nyour server and type in the code:\nmkdir templates\nMake two new template files in the templates folder.",
-      "sentence_number": 1786,
-      "word_count": 20
-    },
-    {
-      "text": "Call them base.html and\nhome.html.",
-      "sentence_number": 1787,
-      "word_count": 5
-    },
-    {
-      "text": "The next step is to edit the settings.py file to direct Django to the appropriate\nfolder to find our templates.",
       "sentence_number": 1788,
       "word_count": 20
     },
     {
-      "text": "Add this line to the TEMPLATES section:\n\"DIRS\": [BASE_DIR / \"templates\"],\nIn the base.html file, put the following:\n<!-- templates/base.html -->\n<html>\n<head>\n<title>Django blog</title>\n</head>\n<body>\n<header>\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</header>\n<div>\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nPut this in the home.html:\n<!-- templates/home.html -->\n{% extends \"base.html\" %}\n{% block content %}\n{% for post in post_list %}\n<div class=\"post-entry\">\n<h2><a href=\"\">{{ post.title }}</a></h2>\n<p>{{ post.body }}</p>\n</div>\n{% endfor %}\n{% endblock content %}\nIf you run python manage.py runserver again and then reload the homepage,\nwe will notice that the Django server is up and running.",
+      "text": "Call them base.html and\nhome.html.",
       "sentence_number": 1789,
+      "word_count": 5
+    },
+    {
+      "text": "The next step is to edit the settings.py file to direct Django to the appropriate\nfolder to find our templates.",
+      "sentence_number": 1790,
+      "word_count": 20
+    },
+    {
+      "text": "Add this line to the TEMPLATES section:\n\"DIRS\": [BASE_DIR / \"templates\"],\nIn the base.html file, put the following:\n<!-- templates/base.html -->\n<html>\n<head>\n<title>Django blog</title>\n</head>\n<body>\n<header>\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</header>\n<div>\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nPut this in the home.html:\n<!-- templates/home.html -->\n{% extends \"base.html\" %}\n{% block content %}\n{% for post in post_list %}\n<div class=\"post-entry\">\n<h2><a href=\"\">{{ post.title }}</a></h2>\n<p>{{ post.body }}</p>\n</div>\n{% endfor %}\n{% endblock content %}\nIf you run python manage.py runserver again and then reload the homepage,\nwe will notice that the Django server is up and running.",
+      "sentence_number": 1791,
       "word_count": 109
     },
     {
       "text": "Now, that is our first website.",
-      "sentence_number": 1790,
+      "sentence_number": 1792,
       "word_count": 6
     },
     {
       "text": "But it looks ugly!",
-      "sentence_number": 1791,
+      "sentence_number": 1793,
       "word_count": 4
     },
     {
       "text": "Let’s fix that.",
-      "sentence_number": 1792,
+      "sentence_number": 1794,
       "word_count": 3
     },
     {
       "text": "Add some Style!",
-      "sentence_number": 1793,
+      "sentence_number": 1795,
       "word_count": 3
     },
     {
       "text": "We need to add some CSS to our project to enhance the styling.",
-      "sentence_number": 1794,
+      "sentence_number": 1796,
       "word_count": 13
     },
     {
       "text": "A\nfundamental component of any contemporary web application is CSS,\nJavaScript, and pictures, which are referred to as \"static files\" in the Django\necosystem.",
-      "sentence_number": 1795,
+      "sentence_number": 1797,
       "word_count": 24
     },
     {
       "text": "Although Django offers enormous flexibility in terms of how\nthese files are used, this can be very confusing for beginners.",
-      "sentence_number": 1796,
+      "sentence_number": 1798,
       "word_count": 20
     },
     {
       "text": "Django will, by default, search each app for a subfolder called static.",
-      "sentence_number": 1797,
-      "word_count": 12
-    },
-    {
-      "text": "Or a\nfolder with the name static in the blog folder.",
-      "sentence_number": 1798,
-      "word_count": 11
-    },
-    {
-      "text": "If you remember, this is also\nhow the templates folder was created.",
       "sentence_number": 1799,
       "word_count": 12
     },
     {
-      "text": "Stop the local server, then use the following line to create a static folder in the\nmanage.py file's location.",
+      "text": "Or a\nfolder with the name static in the blog folder.",
       "sentence_number": 1800,
+      "word_count": 11
+    },
+    {
+      "text": "If you remember, this is also\nhow the templates folder was created.",
+      "sentence_number": 1801,
+      "word_count": 12
+    },
+    {
+      "text": "Stop the local server, then use the following line to create a static folder in the\nmanage.py file's location.",
+      "sentence_number": 1802,
       "word_count": 19
     },
     {
       "text": "mkdir static\nWe must instruct Django to look in this new folder when loading static files.",
-      "sentence_number": 1801,
+      "sentence_number": 1803,
       "word_count": 16
     },
     {
       "text": "There is already one line of configuration in the settings.py file, which you\ncan find at the bottom:\nNow, below that, we add the following line:\nSTATICFILES_DIRS = [BASE_DIR / \"static\"]\nWe instruct Django to look for static files in the newly formed static\nsubfolder.",
-      "sentence_number": 1802,
+      "sentence_number": 1804,
       "word_count": 45
     },
     {
       "text": "Use this line to create a CSS subfolder:\nmkdir static/css\nUse your text editor to create a new file within this folder called base.css\ninside the new CSS subfolder.",
-      "sentence_number": 1803,
+      "sentence_number": 1805,
       "word_count": 29
     },
     {
       "text": "Then fill it with this code to create a page title\nand color it red!",
-      "sentence_number": 1804,
+      "sentence_number": 1806,
       "word_count": 15
     },
     {
       "text": "Almost there!",
-      "sentence_number": 1805,
+      "sentence_number": 1807,
       "word_count": 2
     },
     {
       "text": "Add % load static % to the top of base.html to include the\nstatic files in the templates.",
-      "sentence_number": 1806,
+      "sentence_number": 1808,
       "word_count": 18
     },
     {
       "text": "We only need to include it once because all of our\nother templates inherit from base.html.",
-      "sentence_number": 1807,
+      "sentence_number": 1809,
       "word_count": 16
     },
     {
       "text": "Insert a new line after closing the\n<head> tag to include a direct link to the base.css file we just created.",
-      "sentence_number": 1808,
+      "sentence_number": 1810,
       "word_count": 21
     },
     {
       "text": "<!-- templates/base.html -->\n{% load static %}\n<html>\n<head>\n<title>Django blog</title>\n<link rel=\"stylesheet\" href=\"{% static 'css/base.css' %}\">\n<head>\n<title>Django blog</title>\n</head>\n<body>\n<header>\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</header>\n<div>\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nStart up the server again and check the URL.",
-      "sentence_number": 1809,
+      "sentence_number": 1811,
       "word_count": 51
     },
     {
       "text": "We can also customize other things like font size, type, etc., by tweaking the\ncss file.",
-      "sentence_number": 1810,
+      "sentence_number": 1812,
       "word_count": 16
     },
     {
       "text": "Individual Blog Pages\nIndividual blog posts can now have their stated features implemented.",
-      "sentence_number": 1811,
+      "sentence_number": 1813,
       "word_count": 13
     },
     {
       "text": "A new\nview, URL, and template will have to be developed.",
-      "sentence_number": 1812,
+      "sentence_number": 1814,
       "word_count": 11
     },
     {
       "text": "One must first take in the view.",
-      "sentence_number": 1813,
+      "sentence_number": 1815,
       "word_count": 7
     },
     {
       "text": "To make things easier, we can utilize the\nDetailView, which is built on a generic class.",
-      "sentence_number": 1814,
+      "sentence_number": 1816,
       "word_count": 16
     },
     {
       "text": "Add DetailView to the import\nat the top of the script and generate a new view named BlogDetailView.",
-      "sentence_number": 1815,
+      "sentence_number": 1817,
       "word_count": 18
     },
     {
       "text": "from django.shortcuts import render\n# Create your views here.",
-      "sentence_number": 1816,
+      "sentence_number": 1818,
       "word_count": 9
     },
     {
       "text": "from django.views.generic import ListView, DetailView\nfrom .models import Post\nclass BlogListView(ListView):\nmodel = Post\ntemplate_name = \"home.html\"\nclass BlogDetailView(DetailView):\nmodel = Post\ntemplate_name = \"post_detail.html\"\nLet's say we want to create a new URL path for our view.",
-      "sentence_number": 1817,
+      "sentence_number": 1819,
       "word_count": 38
     },
     {
       "text": "Use the code seen\nbelow in the urls.py in the blog folder:\nfrom django.urls import path\nfrom .views import BlogListView, BlogDetailView\nurlpatterns = [\npath(\"post/<int:pk>/\", BlogDetailView.as_view(), name=\"post_detail\"),\npath(\"\", BlogListView.as_view(), name=\"home\"),\n]\nFor consistency, we've decided to prefix all blog post URLs with post/.",
-      "sentence_number": 1818,
+      "sentence_number": 1820,
       "word_count": 43
     },
     {
       "text": "The\nnext thing to consider is the post entry's primary key, which we'll express as\nan integer, int:pk>.",
-      "sentence_number": 1819,
+      "sentence_number": 1821,
       "word_count": 18
     },
     {
       "text": "I know what you're thinking: \"What is the main factor?\"\nOur database models already have an auto-incrementing primary key86\nbecause Django included it by default.",
-      "sentence_number": 1820,
+      "sentence_number": 1822,
       "word_count": 25
     },
     {
       "text": "As a result, while we only stated the\nfields title, author, and body on our Post model, Django automatically added\nan additional field named id, which serves as our primary key.",
-      "sentence_number": 1821,
+      "sentence_number": 1823,
       "word_count": 31
     },
     {
       "text": "Either an id or\na pk will work to get in.",
-      "sentence_number": 1822,
+      "sentence_number": 1824,
       "word_count": 11
     },
     {
       "text": "For our first \"Hello, World!\" message, we'll use a pk of 1.",
-      "sentence_number": 1823,
+      "sentence_number": 1825,
       "word_count": 12
     },
     {
       "text": "It's 2 for the\nsecond.",
-      "sentence_number": 1824,
+      "sentence_number": 1826,
       "word_count": 5
     },
     {
       "text": "The URL structure of our initial post, which will lead us to its\nparticular entry page, will look like this: post/1/.",
-      "sentence_number": 1825,
+      "sentence_number": 1827,
       "word_count": 21
     },
     {
       "text": "If you recall, the get absolute url method on our Post model accepts a pk\nargument in this case since the URL specifies it.",
-      "sentence_number": 1826,
+      "sentence_number": 1828,
       "word_count": 24
     },
     {
       "text": "Primarily, new users often\nstruggle to grasp the relationship between primary keys and the get absolute\nurl method.",
-      "sentence_number": 1827,
+      "sentence_number": 1829,
       "word_count": 18
     },
     {
       "text": "If you are still confused, it may help to read the previous two\nparagraphs again.",
-      "sentence_number": 1828,
+      "sentence_number": 1830,
       "word_count": 15
     },
     {
       "text": "You'll get used to it after some repetition.",
-      "sentence_number": 1829,
-      "word_count": 8
-    },
-    {
-      "text": "After running python manage.py runserver, our first blog post will have its\nown URL of http://127.0.0.1:8000/post/1/.",
-      "sentence_number": 1830,
-      "word_count": 16
-    },
-    {
-      "text": "To view the second entry, please visit http://127.0.0.1:8000/post/2/.",
       "sentence_number": 1831,
       "word_count": 8
     },
     {
-      "text": "The link on the homepage should be updated so that we can easily navigate to\ncertain blog entries.",
+      "text": "After running python manage.py runserver, our first blog post will have its\nown URL of http://127.0.0.1:8000/post/1/.",
       "sentence_number": 1832,
+      "word_count": 16
+    },
+    {
+      "text": "To view the second entry, please visit http://127.0.0.1:8000/post/2/.",
+      "sentence_number": 1833,
+      "word_count": 8
+    },
+    {
+      "text": "The link on the homepage should be updated so that we can easily navigate to\ncertain blog entries.",
+      "sentence_number": 1834,
       "word_count": 18
     },
     {
       "text": "Replace the current empty link with a href=\" % url 'post\ndetail' post.pk % \"> in home.html.",
-      "sentence_number": 1833,
+      "sentence_number": 1835,
       "word_count": 17
     },
     {
       "text": "{% extends \"base.html\" %}\n{% block content %}\n{% for post in post_list %}\n<div class=\"post-entry\">\n<h2><a href=\"{% url 'post_detail' post.pk %}\">{{ post.title }}</a></h2>\n<p>{{ post.body }}</p>\n</div>\n{% endfor %}\n{% endblock content %}\nCheck and click the post from the home page.",
-      "sentence_number": 1834,
+      "sentence_number": 1836,
       "word_count": 44
     },
     {
       "text": "Testing\nNew features have been added to our Blog project that we hadn't seen or tried\nbefore this section.",
-      "sentence_number": 1835,
+      "sentence_number": 1837,
       "word_count": 19
     },
     {
       "text": "We now have a user, various views (a list view of all blog\nposts and a detail view for each article), and a Post model with numerous\nfields.",
-      "sentence_number": 1836,
+      "sentence_number": 1838,
       "word_count": 28
     },
     {
       "text": "There is a lot to try out!",
-      "sentence_number": 1837,
+      "sentence_number": 1839,
       "word_count": 7
     },
     {
       "text": "To start, we can prepare our test data and validate the Post model.",
-      "sentence_number": 1838,
+      "sentence_number": 1840,
       "word_count": 13
     },
     {
       "text": "So, this is\nhow it may look in a nutshell:\nfrom django.test import TestCase\n# Create your tests here.",
-      "sentence_number": 1839,
+      "sentence_number": 1841,
       "word_count": 19
     },
     {
       "text": "from django.contrib.auth import get_user_model\nfrom django.urls import reverse\nfrom .models import Post\nclass BlogTests(TestCase):\n@classmethod\ndef setUpTestData(cls):\ncls.user = get_user_model().objects.create_user(\nusername=\"testuser\", email=\"test@email.com\", password=\"secret\"\n)\ncls.post = Post.objects.create(\ntitle=\"A good title\",\nbody=\"Nice body content\",\nauthor=cls.user,\n)\ndef test_post_model(self):\nself.assertEqual(self.post.title, \"A good title\")\nself.assertEqual(self.post.body, \"Nice body content\")\nself.assertEqual(self.post.author.username, \"testuser\")\nself.assertEqual(str(self.post), \"A good title\")\nself.assertEqual(self.post.get_absolute_url(), \"/post/1/\")\ndef test_url_exists_at_correct_location_listview(self):\nresponse = self.client.get(\"/\")\nself.assertEqual(response.status_code, 200)\ndef test_url_exists_at_correct_location_detailview(self):\nresponse = self.client.get(\"/post/1/\")\nself.assertEqual(response.status_code, 200)\ndef test_post_listview(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertEqual(response.status_code, 200)\nself.assertContains(response, \"Nice body content\")\nself.assertTemplateUsed(response, \"home.html\")\ndef test_post_detailview(self): # new\nresponse = self.client.get(reverse(\"post_detail\", kwargs={\"pk\": self.post.pk}))\nno_response = self.client.get(\"/post/100000/\")\nself.assertEqual(response.status_code, 200)\nself.assertEqual(no_response.status_code, 404)\nself.assertContains(response, \"A good title\")\nself.assertTemplateUsed(response, \"post_detail.html\")\nFirst, we test whether the requested URL exists in the correct folder for both\nviews.",
-      "sentence_number": 1840,
+      "sentence_number": 1842,
       "word_count": 117
     },
     {
       "text": "Then, we ensure the home.html template is loaded, that the named\nURL is being utilized, that the right content is being returned, and that a\nsuccessful 200 status code is being returned by creating the test post listview.",
-      "sentence_number": 1841,
+      "sentence_number": 1843,
       "word_count": 38
     },
     {
       "text": "To get a detail view of our test post, we must include the pk in response to\nthe test post - detailview method.",
-      "sentence_number": 1842,
+      "sentence_number": 1844,
       "word_count": 23
     },
     {
       "text": "We keep using the same template but\nexpand our tests to cover more edge cases.",
-      "sentence_number": 1843,
+      "sentence_number": 1845,
       "word_count": 15
     },
     {
       "text": "Since we haven't written\ntwo articles, we don't want a response at /post/100000/, for example.",
-      "sentence_number": 1844,
+      "sentence_number": 1846,
       "word_count": 15
     },
     {
       "text": "We also\nprefer to avoid an HTTP status code of 404.",
-      "sentence_number": 1845,
+      "sentence_number": 1847,
       "word_count": 11
     },
     {
       "text": "Incorrect examples of tests that\nshould fail should be sprinkled in from time to time to ensure that your tests\naren't all passing by accident.",
-      "sentence_number": 1846,
+      "sentence_number": 1848,
       "word_count": 25
     },
     {
       "text": "Run the new tests to make sure everything is working as it should.",
-      "sentence_number": 1847,
+      "sentence_number": 1849,
       "word_count": 13
     },
     {
       "text": "Git\nNow, let us do our first Git commit.",
-      "sentence_number": 1848,
+      "sentence_number": 1850,
       "word_count": 9
     },
     {
       "text": "First, initialize our folder, create the\n.gitignore and review all the content we’ve added by checking the git status.",
-      "sentence_number": 1849,
+      "sentence_number": 1851,
       "word_count": 19
     },
     {
       "text": "(.venv) > git status\n(.venv) > git add -A\n(.venv) > git commit -m \"initial commit\"\nWe have successfully created a working blog application from scratch.",
-      "sentence_number": 1850,
+      "sentence_number": 1852,
       "word_count": 26
     },
     {
       "text": "Django's admin panel allows us to quickly generate, modify, and remove\ncontent.",
-      "sentence_number": 1851,
+      "sentence_number": 1853,
       "word_count": 12
     },
     {
       "text": "For the first time, we were able to create a detailed view of each blog\npost separately by employing DetailView.",
-      "sentence_number": 1852,
+      "sentence_number": 1854,
       "word_count": 20
     },
     {
       "text": "C 6 – D W F\nHAPTER JANGO EB ORMS\nIn this chapter, we'll continue developing the Blog application we started in\nChapter 5 by adding the necessary forms for users to add, modify, or remove\nentries from their blogs.",
-      "sentence_number": 1853,
+      "sentence_number": 1855,
       "word_count": 40
     },
     {
       "text": "To accept user input raises security problems,\nmaking HTML forms one of the more complex and error-prone components\nof online development.",
-      "sentence_number": 1854,
+      "sentence_number": 1856,
       "word_count": 21
     },
     {
       "text": "All submitted forms must be rendered correctly,\nvalidated, and stored in the database.",
-      "sentence_number": 1855,
+      "sentence_number": 1857,
       "word_count": 13
     },
     {
       "text": "Django's powerful in-built Forms abstract away much of the difficulties,\nmaking it unnecessary to write this code from scratch.",
-      "sentence_number": 1856,
+      "sentence_number": 1858,
       "word_count": 19
     },
     {
       "text": "Displaying, making\nchanges to, or removing a form are some of the many commonplace actions\nthat Django's built-in generic editing views are catered to.",
-      "sentence_number": 1857,
+      "sentence_number": 1859,
       "word_count": 24
     },
     {
       "text": "CreateView\nThe first step is to provide a link to a website where new blog entries may be\nentered into our primary template.",
-      "sentence_number": 1858,
+      "sentence_number": 1860,
       "word_count": 23
     },
     {
       "text": "It will look like this: <a href=\"% url \"post\nnew\"%></a>.",
-      "sentence_number": 1859,
+      "sentence_number": 1861,
       "word_count": 10
     },
     {
       "text": "Your revised script should now look like this:\n{% load static %}\n<html>\n<head>\n<title>Django blog</title>\n<link href=\"https://fonts.googleapis.com/css?family=\\\nSource+Sans+Pro:400\" rel=\"stylesheet\">\n<link href=\"{% static 'css/base.css' %}\" rel=\"stylesheet\">\n</head>\n<body>\n<div>\n<header>\n<div class=\"nav-left\">\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</div>\n<div class=\"nav-right\">\n<a href=\"{% url 'post_new' %}\">+ New Blog Post</a>\n</div>\n</header>\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nWith this code, we have added the feature to post new content.",
-      "sentence_number": 1860,
+      "sentence_number": 1862,
       "word_count": 74
     },
     {
       "text": "But now, we\nneed to add a new URL for the post_new feature.",
-      "sentence_number": 1861,
+      "sentence_number": 1863,
       "word_count": 13
     },
     {
       "text": "We need to import\nBlogCreateView in the urls.py file and add a URL path for post/new/.",
-      "sentence_number": 1862,
+      "sentence_number": 1864,
       "word_count": 16
     },
     {
       "text": "from django.urls import path\nfrom .views import BlogListView, BlogDetailView, BlogCreateView\nurlpatterns = [\npath(\"post/new/\", BlogCreateView.as_view(), name=\"post_new\"),\npath(\"post/<int:pk>/\", BlogDetailView.as_view(), name=\"post_detail\"),\npath(\"\", BlogListView.as_view(), name=\"home\"),\n]\nWe have seen this URL, views, and template pattern before.",
-      "sentence_number": 1863,
+      "sentence_number": 1865,
       "word_count": 33
     },
     {
       "text": "To build our\nview, we'll import the general class CreateView at the top and then subclass it\nto make a new view called BlogCreateView.",
-      "sentence_number": 1864,
+      "sentence_number": 1866,
       "word_count": 24
     },
     {
       "text": "Now in the views.py file, update the code to be the following:\nfrom django.views.generic import ListView, DetailView\nfrom django.views.generic.edit import CreateView\nfrom .models import Post\nclass BlogListView(ListView):\nmodel = Post\ntemplate_name = \"home.html\"\nclass BlogDetailView(DetailView):\nmodel = Post\ntemplate_name = \"post_detail.html\"\nclass BlogCreateView(CreateView):\nmodel = Post\ntemplate_name = \"post_new.html\"\nfields = [\"title\", \"author\", \"body\"]\nThe BlogCreateView class is where we define the Post database model, name\nour template post new.html, and establish the visibility of the title, author,\nand body fields in the underlying Post database table.",
-      "sentence_number": 1865,
+      "sentence_number": 1867,
       "word_count": 87
     },
     {
       "text": "The final action is to make a template in the text editor and name it\npost_new.html.",
-      "sentence_number": 1866,
+      "sentence_number": 1868,
       "word_count": 16
     },
     {
       "text": "Then, add the following code to your file:\n{% extends \"base.html\" %}\n{% block content %}\n<h1>New post</h1>\n<form action=\"\" method=\"post\">{% csrf_token %}\n{{ form.as_p }}\n<input type=\"submit\" value=\"Save\">\n</form>\n{% endblock content %}\nLet’s break it down:\nIn the first line, we must inherit features from our base template.",
-      "sentence_number": 1867,
+      "sentence_number": 1869,
       "word_count": 50
     },
     {
       "text": "We are using an HTML form, so the <form> tags with the POST\nmethod are essential because we are sending.",
-      "sentence_number": 1868,
+      "sentence_number": 1870,
       "word_count": 20
     },
     {
       "text": "If it was to receive, like\na search box, for example, instead of POST, we would use GET.",
-      "sentence_number": 1869,
+      "sentence_number": 1871,
       "word_count": 18
     },
     {
       "text": "Add a {% csrf_token %} from Django provides to protect our form\nfrom bots.",
-      "sentence_number": 1870,
+      "sentence_number": 1872,
       "word_count": 14
     },
     {
       "text": "We use {{ form.as_p }} to render the specified fields within\nparagraph <p> tags.",
-      "sentence_number": 1871,
+      "sentence_number": 1873,
       "word_count": 14
     },
     {
       "text": "Lastly, set the value \"Save\" for a submit type input.",
-      "sentence_number": 1872,
+      "sentence_number": 1874,
       "word_count": 10
     },
     {
       "text": "Launch the server with python manage.py runserver and navigate to the\nhomepage to check at http://127.0.0.1:8000/.",
-      "sentence_number": 1873,
+      "sentence_number": 1875,
       "word_count": 16
     },
     {
       "text": "Click the \"+ New Blog Post\" option to add a new blog post.",
-      "sentence_number": 1874,
+      "sentence_number": 1876,
       "word_count": 13
     },
     {
       "text": "If you click it,\nyou'll be taken to a new page at http://127.0.0.1:8000/post/new/.",
-      "sentence_number": 1875,
-      "word_count": 13
-    },
-    {
-      "text": "Try your hand at writing a new blog entry and publishing it by selecting\n\"Save\" from the file menu.",
-      "sentence_number": 1876,
-      "word_count": 19
-    },
-    {
-      "text": "When it's done, it'll take you to a post-specific detail page at\nhttp://127.0.0.1:8000/post/3/.",
       "sentence_number": 1877,
       "word_count": 13
     },
     {
-      "text": "Let Anyone Edit The Blog\nDeveloping an edit form for blog entries should follow a similar pattern.",
+      "text": "Try your hand at writing a new blog entry and publishing it by selecting\n\"Save\" from the file menu.",
       "sentence_number": 1878,
+      "word_count": 19
+    },
+    {
+      "text": "When it's done, it'll take you to a post-specific detail page at\nhttp://127.0.0.1:8000/post/3/.",
+      "sentence_number": 1879,
+      "word_count": 13
+    },
+    {
+      "text": "Let Anyone Edit The Blog\nDeveloping an edit form for blog entries should follow a similar pattern.",
+      "sentence_number": 1880,
       "word_count": 17
     },
     {
       "text": "To\ngenerate the necessary template, url, and view, we'll again leverage a built-in\nDjango class-based generic view, UpdateView.",
-      "sentence_number": 1879,
+      "sentence_number": 1881,
       "word_count": 18
     },
     {
       "text": "To begin, on each blog page there should be a link to post detail.html where\nthe post can be edited.",
-      "sentence_number": 1880,
+      "sentence_number": 1882,
       "word_count": 20
     },
     {
-      "text": "The following is the update:\n{% extends \"base.html\" %}\n{% block content %}\n<div class=\"post-entry\">\n<h2>{{ post.title }}</h2>\n<p>{{ post.body }}</p>\n</div>\n<a href=\"{% url 'post_edit' post.pk %}\">+ Edit Blog Post</a>\n{% endblock content %}\nWe use <a href>...</a> and {% url .",
-      "sentence_number": 1881,
+      "text": "The following is the update:\n{% extends \"base.html\" %}\n{% block content %}\n<div class=\"post-entry\">\n<h2>{{ post.title }}</h2>\n<p>{{ post.body }}</p>\n</div>\n<a href=\"{% url 'post_edit' post.pk %}\">+ Edit Blog Post</a>\n{% endblock content %}\nWe use <a href>...</a> and {% url ...",
+      "sentence_number": 1883,
       "word_count": 43
     },
     {
       "text": "%} tag to add the link.",
-      "sentence_number": 1882,
+      "sentence_number": 1884,
       "word_count": 6
     },
     {
       "text": "Within the tags,\nwe specified the name of the new url, which we will call post_edit, and we\nalso passed the needed argument, which is the primary key of the post.pk.",
-      "sentence_number": 1883,
+      "sentence_number": 1885,
       "word_count": 31
     },
     {
       "text": "Now, let us create a template file for the new edit page.",
-      "sentence_number": 1884,
+      "sentence_number": 1886,
       "word_count": 12
     },
     {
       "text": "Call it post_edit.html\nand add the following code:\n{% extends \"base.html\" %}\n{% block content %}\n<h1>Edit post</h1>\n<form action=\"\" method=\"post\">{% csrf_token %}\n{{ form.as_p }}\n<input type=\"submit\" value=\"Update\">\n</form>\n{% endblock content %}\nFor the view.",
-      "sentence_number": 1885,
+      "sentence_number": 1887,
       "word_count": 37
     },
     {
       "text": "Open the views.py file and import UpdateView on the second-\nfrom-the-top line and then subclass it in the new view BlogUpdateView.",
-      "sentence_number": 1886,
+      "sentence_number": 1888,
       "word_count": 21
     },
     {
       "text": "Here is the updated code:\nfrom django.views.generic import ListView, DetailView\nfrom django.views.generic.edit import CreateView, UpdateView\nfrom .models import Post\nclass BlogListView(ListView):\nmodel = Post\ntemplate_name = \"home.html\"\nclass BlogDetailView(DetailView):\nmodel = Post\ntemplate_name = \"post_detail.html\"\nclass BlogCreateView(CreateView):\nmodel = Post\ntemplate_name = \"post_new.html\"\nfields = [\"title\", \"author\", \"body\"]\nclass BlogUpdateView(UpdateView):\nmodel = Post\ntemplate_name = \"post_edit.html\"\nfields = [\"title\", \"body\"]\nThe final action is to modify the file urls.py in the way described below.",
-      "sentence_number": 1887,
+      "sentence_number": 1889,
       "word_count": 74
     },
     {
       "text": "We\nrecommend placing the BlogUpdateView and the new route at the very top of\nthe old urlpatterns.",
-      "sentence_number": 1888,
+      "sentence_number": 1890,
       "word_count": 17
     },
     {
       "text": "from django.urls import path\nfrom .views import (\nBlogListView,\nBlogDetailView,\nBlogCreateView,\nBlogUpdateView,\n)\nurlpatterns = [\npath(\"post/new/\", BlogCreateView.as_view(), name=\"post_new\"),\npath(\"post/<int:pk>/\", BlogDetailView.as_view(), name=\"post_detail\"),\npath(\"post/<int:pk>/edit/\", BlogUpdateView.as_view(), name=\"post_edit\"),\npath(\"\", BlogListView.as_view(), name=\"home\"),\n]\nNow, if you click on a blog post, the Edit button will show like this:\nIf you click “+ Edit Blog Post,” it will redirect you to /post/3/edit/.",
-      "sentence_number": 1889,
+      "sentence_number": 1891,
       "word_count": 57
     },
     {
       "text": "You can\nedit anything.",
-      "sentence_number": 1890,
+      "sentence_number": 1892,
       "word_count": 4
     },
     {
       "text": "When we modify and click the \"Update\" button, we're taken to the post's\ndetail page, where we can see the update.",
-      "sentence_number": 1891,
+      "sentence_number": 1893,
       "word_count": 21
     },
     {
       "text": "This is due to our get_absolute_url\nconfiguration.",
-      "sentence_number": 1892,
+      "sentence_number": 1894,
       "word_count": 7
     },
     {
       "text": "If you go to the homepage now, you'll see the updated\ninformation alongside the rest of the posts.",
-      "sentence_number": 1893,
+      "sentence_number": 1895,
       "word_count": 18
     },
     {
       "text": "Let Users Delete Posts\nAs with the post-update form, the post-deletion form is created similarly.",
-      "sentence_number": 1894,
+      "sentence_number": 1896,
       "word_count": 15
     },
     {
       "text": "To build the required view, url, and template, we'll employ another generic\nclass-based view, DeleteView.",
-      "sentence_number": 1895,
+      "sentence_number": 1897,
       "word_count": 15
     },
     {
       "text": "To get started, go to post_detail.html to include a delete button on the page.",
-      "sentence_number": 1896,
+      "sentence_number": 1898,
       "word_count": 14
     },
     {
       "text": "Use the following code:\n{% extends \"base.html\" %}\n{% block content %}\n<div class=\"post-entry\">\n<h2>{{ post.title }}</h2>\n<p>{{ post.body }}</p>\n</div>\n<p><a href=\"{% url 'post_edit' post.pk %}\">+ Edit Blog Post</a></p>\n<p><a href=\"{% url 'post_delete' post.pk %}\">+ Delete Blog Post</a></p>\n{% endblock content %}\nMake a new template for our post delete page.",
-      "sentence_number": 1897,
+      "sentence_number": 1899,
       "word_count": 52
     },
     {
       "text": "A file with the following\ncontents will be created named post_delete.html:\n{% extends \"base.html\" %}\n{% block content %}\n<h1>Delete post</h1>\n<form action=\"\" method=\"post\">{% csrf_token %}\n<p>Are you sure you want to delete \"{{ post.title }}\"?</p>\n<input type=\"submit\" value=\"Confirm\">\n</form>\n{% endblock content %}\nIn this case, the title of our blog post is being shown via the post.title\nvariable.",
-      "sentence_number": 1898,
+      "sentence_number": 1900,
       "word_count": 60
     },
     {
       "text": "Since object.title is also a feature of DetailView, we could use that\ninstead.",
-      "sentence_number": 1899,
+      "sentence_number": 1901,
       "word_count": 13
     },
     {
       "text": "Create a new view that extends DeleteView, then update the views.py file to\nimport DeleteView and reverse lazy at the beginning.",
-      "sentence_number": 1900,
+      "sentence_number": 1902,
       "word_count": 21
     },
     {
       "text": "from django.views.generic import ListView, DetailView\nfrom django.views.generic.edit import CreateView, UpdateView, DeleteView\nfrom django.urls import reverse_lazy\nfrom .models import Post\nclass BlogListView(ListView):\nmodel = Post\ntemplate_name = \"home.html\"\nclass BlogDetailView(DetailView):\nmodel = Post\ntemplate_name = \"post_detail.html\"\nclass BlogCreateView(CreateView):\nmodel = Post\ntemplate_name = \"post_new.html\"\nfields = [\"title\", \"author\", \"body\"]\nclass BlogUpdateView(UpdateView):\nmodel = Post\ntemplate_name = \"post_edit.html\"\nfields = [\"title\", \"body\"]\nclass BlogDeleteView(DeleteView):\nmodel = Post\ntemplate_name = \"post_delete.html\"\nsuccess_url = reverse_lazy(\"home\")\nDeleteView takes three parameters: a Post model, a post delete.html template,\nand a success url property.",
-      "sentence_number": 1901,
+      "sentence_number": 1903,
       "word_count": 87
     },
     {
       "text": "Exactly what effect does this have?",
-      "sentence_number": 1902,
+      "sentence_number": 1904,
       "word_count": 6
     },
     {
       "text": "After deleting\na blog article, we want to send the user to the homepage.",
-      "sentence_number": 1903,
+      "sentence_number": 1905,
       "word_count": 14
     },
     {
       "text": "In addition to CreateView, UpdateView also has redirects, but we did not\nneed to supply a success url because of this.",
-      "sentence_number": 1904,
+      "sentence_number": 1906,
       "word_count": 21
     },
     {
       "text": "Because if get absolute url() is\npresent on the model object, Django will utilize it by default.",
-      "sentence_number": 1905,
-      "word_count": 17
-    },
-    {
-      "text": "In addition, this\nattribute is only shown to those that take the time to study and memorize the\ndocumentation, namely the sections on model forms and success url.",
-      "sentence_number": 1906,
-      "word_count": 28
-    },
-    {
-      "text": "Or the likelihood of an error occurring and subsequent backtracking to\nresolve this Django-specific behavior is increased.",
       "sentence_number": 1907,
       "word_count": 17
     },
     {
-      "text": "In this case, we use reverse_lazy rather than just reverse to delay the URL\nredirect's execution until after our view has completed removing the blog\narticle.",
+      "text": "In addition, this\nattribute is only shown to those that take the time to study and memorize the\ndocumentation, namely the sections on model forms and success url.",
       "sentence_number": 1908,
+      "word_count": 28
+    },
+    {
+      "text": "Or the likelihood of an error occurring and subsequent backtracking to\nresolve this Django-specific behavior is increased.",
+      "sentence_number": 1909,
+      "word_count": 17
+    },
+    {
+      "text": "In this case, we use reverse_lazy rather than just reverse to delay the URL\nredirect's execution until after our view has completed removing the blog\narticle.",
+      "sentence_number": 1910,
       "word_count": 26
     },
     {
       "text": "Final step: Make a URL by importing our view BlogDeleteView and\nappending a new pattern:\nfrom django.urls import path\nfrom .views import (\nBlogListView,\nBlogDetailView,\nBlogCreateView,\nBlogUpdateView,\nBlogDeleteView,\n)\nurlpatterns = [\npath(\"post/new/\", BlogCreateView.as_view(), name=\"post_new\"),\npath(\"post/<int:pk>/\", BlogDetailView.as_view(), name=\"post_detail\"),\npath(\"post/<int:pk>/edit/\", BlogUpdateView.as_view(), name=\"post_edit\"),\npath(\"post/<int:pk>/delete/\", BlogDeleteView.as_view(), name=\"post_delete\"),\npath(\"\", BlogListView.as_view(), name=\"home\"),\n]\nOnce you've restarted the server with the python manage.py runserver\ncommand, you can refresh any post page to reveal our \"Delete Blog Post\"\noption.",
-      "sentence_number": 1909,
+      "sentence_number": 1911,
       "word_count": 72
     },
     {
       "text": "The new page will show if you click it, asking you to confirm.",
-      "sentence_number": 1910,
+      "sentence_number": 1912,
       "word_count": 13
     },
     {
       "text": "Click confirm, and the post is gone!",
-      "sentence_number": 1911,
+      "sentence_number": 1913,
       "word_count": 7
     },
     {
       "text": "Testing Program\nWe have added so many features.",
-      "sentence_number": 1912,
+      "sentence_number": 1914,
       "word_count": 8
     },
     {
       "text": "Let us test everything to see that they will\ncontinue to work as expected.",
-      "sentence_number": 1913,
+      "sentence_number": 1915,
       "word_count": 14
     },
     {
       "text": "We have new views for creating, updating, and\ndeleting posts.",
-      "sentence_number": 1914,
+      "sentence_number": 1916,
       "word_count": 10
     },
     {
       "text": "We will use three new tests:\ndef test_post_createview\ndef test_post_updateview\ndef test_post_deleteview\nThe updated script in your tests.py file will be as follows.",
-      "sentence_number": 1915,
+      "sentence_number": 1917,
       "word_count": 23
     },
     {
       "text": "from django.test import TestCase\n# Create your tests here.",
-      "sentence_number": 1916,
+      "sentence_number": 1918,
       "word_count": 9
     },
     {
       "text": "from django.contrib.auth import get_user_model\nfrom django.urls import reverse\nfrom .models import Post\nclass BlogTests(TestCase):\n@classmethod\ndef setUpTestData(cls):\ncls.user = get_user_model().objects.create_user(\nusername=\"testuser\", email=\"test@email.com\", password=\"secret\"\n)\ncls.post = Post.objects.create(\ntitle=\"A good title\",\nbody=\"Nice body content\",\nauthor=cls.user,\n)\ndef test_post_model(self):\nself.assertEqual(self.post.title, \"A good title\")\nself.assertEqual(self.post.body, \"Nice body content\")\nself.assertEqual(self.post.author.username, \"testuser\")\nself.assertEqual(str(self.post), \"A good title\")\nself.assertEqual(self.post.get_absolute_url(), \"/post/1/\")\ndef test_url_exists_at_correct_location_listview(self):\nresponse = self.client.get(\"/\")\nself.assertEqual(response.status_code, 200)\ndef test_url_exists_at_correct_location_detailview(self):\nresponse = self.client.get(\"/post/1/\")\nself.assertEqual(response.status_code, 200)\ndef test_post_listview(self):\nresponse = self.client.get(reverse(\"home\"))\nself.assertEqual(response.status_code, 200)\nself.assertContains(response, \"Nice body content\")\nself.assertTemplateUsed(response, \"home.html\")\ndef test_post_detailview(self):\nresponse = self.client.get(reverse(\"post_detail\", kwargs={\"pk\": self.post.pk}))\nno_response = self.client.get(\"/post/100000/\")\nself.assertEqual(response.status_code, 200)\nself.assertEqual(no_response.status_code, 404)\nself.assertContains(response, \"A good title\")\nself.assertTemplateUsed(response, \"post_detail.html\")\ndef test_post_createview(self):\nresponse = self.client.post(\nreverse(\"post_new\"),\n{\n\"title\": \"New title\",\n\"body\": \"New text\",\n\"author\": self.user.id,\n},\n)\nself.assertEqual(response.status_code, 302)\nself.assertEqual(Post.objects.last().title, \"New title\")\nself.assertEqual(Post.objects.last().body, \"New text\")\ndef test_post_updateview(self):\nresponse = self.client.post(\nreverse(\"post_edit\", args=\"1\"),\n{\n\"title\": \"Updated title\",\n\"body\": \"Updated text\",\n},\n)\nself.assertEqual(response.status_code, 302)\nself.assertEqual(Post.objects.last().title, \"Updated title\")\nself.assertEqual(Post.objects.last().body, \"Updated text\")\ndef test_post_deleteview(self):\nresponse = self.client.post(reverse(\"post_delete\", args=\"1\"))\nself.assertEqual(response.status_code, 302)\nFor test_post_createview, we make a fresh response and make sure it\ncorresponds to the last() object on our model, checking that the page has a\n302 redirect status code.",
-      "sentence_number": 1917,
+      "sentence_number": 1919,
       "word_count": 186
     },
     {
       "text": "The test_post_updateview function checks to\ndetermine if the initial post made in setUpTestData may be updated.",
-      "sentence_number": 1918,
+      "sentence_number": 1920,
       "word_count": 16
     },
     {
       "text": "Test\n_post_deleteview, the last newly added test, verifies that a 302 redirect is\nissued when a post is deleted.",
-      "sentence_number": 1919,
+      "sentence_number": 1921,
       "word_count": 19
     },
     {
       "text": "Even while we have some coverage for our new features, we know there is\nroom for improvement in terms of the number of tests we've run.",
-      "sentence_number": 1920,
+      "sentence_number": 1922,
       "word_count": 26
     },
     {
       "text": "Press\nControl+c to terminate the local web server, then proceed with the testing.",
-      "sentence_number": 1921,
+      "sentence_number": 1923,
       "word_count": 13
     },
     {
       "text": "Every single one of them ought to be okay.",
-      "sentence_number": 1922,
-      "word_count": 9
-    },
-    {
-      "text": "We've developed a Blog app with minimal code that supports adding, editing,\nand removing blog entries.",
-      "sentence_number": 1923,
-      "word_count": 16
-    },
-    {
-      "text": "CreateRead-Update-Delete (or CRUD for short)\ndescribes these fundamental actions.",
       "sentence_number": 1924,
       "word_count": 9
     },
     {
-      "text": "While there may be other ways to\naccomplish this same goal (such as using function-based views or custom\nclass-based views), we've shown how little code is required in Django to do\nthis.",
+      "text": "We've developed a Blog app with minimal code that supports adding, editing,\nand removing blog entries.",
       "sentence_number": 1925,
+      "word_count": 16
+    },
+    {
+      "text": "CreateRead-Update-Delete (or CRUD for short)\ndescribes these fundamental actions.",
+      "sentence_number": 1926,
+      "word_count": 9
+    },
+    {
+      "text": "While there may be other ways to\naccomplish this same goal (such as using function-based views or custom\nclass-based views), we've shown how little code is required in Django to do\nthis.",
+      "sentence_number": 1927,
       "word_count": 32
     },
     {
       "text": "C 7- U A\nHAPTER SER CCOUNTS\nWe have a functional blog app with forms, but we lack a crucial component\nof most web apps: user authentication.",
-      "sentence_number": 1926,
+      "sentence_number": 1928,
       "word_count": 27
     },
     {
       "text": "Proper user authentication is notoriously difficult to accomplish, and several\nsecurity gotchas are along the way.",
-      "sentence_number": 1927,
+      "sentence_number": 1929,
       "word_count": 16
     },
     {
       "text": "Django already has a robust\nauthentication system98 built in, which we can modify to meet our needs.",
-      "sentence_number": 1928,
+      "sentence_number": 1930,
       "word_count": 17
     },
     {
       "text": "Django's default settings include the auth app, which provides us with a User\nobject that consists of the following fields: username, password, email, first\nname, and last name.",
-      "sentence_number": 1929,
+      "sentence_number": 1931,
       "word_count": 28
     },
     {
       "text": "We'll use this User object to log in, log out, and sign up on our blog.",
-      "sentence_number": 1930,
+      "sentence_number": 1932,
       "word_count": 16
     },
     {
       "text": "User Login Access\nDjango's LoginView offers us a ready-made login screen.",
-      "sentence_number": 1931,
+      "sentence_number": 1933,
       "word_count": 11
     },
     {
       "text": "There are only a\nfew things left to do, like updating our settings.py file and adding a URL\npattern for the auth system and a log in template.",
-      "sentence_number": 1932,
+      "sentence_number": 1934,
       "word_count": 28
     },
     {
       "text": "The django project/urls.py file must be modified first.",
-      "sentence_number": 1933,
+      "sentence_number": 1935,
       "word_count": 8
     },
     {
       "text": "The accounts/ URL is\nwhere you may access the login and logout pages.",
-      "sentence_number": 1934,
+      "sentence_number": 1936,
       "word_count": 13
     },
     {
       "text": "This modification involves\nadding a single line to the text on the second-to-last line.",
-      "sentence_number": 1935,
+      "sentence_number": 1937,
       "word_count": 14
     },
     {
       "text": "from django.contrib import admin\nfrom django.urls import path, include\nurlpatterns = [\npath(\"admin/\", admin.site.urls),\npath(\"accounts/\", include(\"django.contrib.auth.urls\")),\npath(\"\", include(\"blog.urls\")),\n]\nBy default, Django looks for a log in form in a templates directory called\nregistration called login.html.",
-      "sentence_number": 1936,
+      "sentence_number": 1938,
       "word_count": 36
     },
     {
       "text": "Therefore, we must make a new folder named\n\"registration\" and place the necessary file within it.",
-      "sentence_number": 1937,
+      "sentence_number": 1939,
       "word_count": 16
     },
     {
       "text": "To end our local server,\nuse Control+c at the command prompt.",
-      "sentence_number": 1938,
+      "sentence_number": 1940,
       "word_count": 11
     },
     {
       "text": "The next step is to make the new\nfolder.",
-      "sentence_number": 1939,
+      "sentence_number": 1941,
       "word_count": 9
     },
     {
       "text": "mkdir templates/registration\nCreate a new template file in the new registration folder called login.html.",
-      "sentence_number": 1940,
+      "sentence_number": 1942,
       "word_count": 14
     },
     {
       "text": "This is the code for the login.html file:\n{% extends \"base.html\" %}\n{% block content %}\n<h2>Log In</h2>\n<form method=\"post\">{% csrf_token %}\n{{ form.as_p }}\n<button type=\"submit\">Log In</button>\n</form>\n{% endblock content %}\nAfter a successful login, we must tell the system where to send the user.",
-      "sentence_number": 1941,
+      "sentence_number": 1943,
       "word_count": 47
     },
     {
       "text": "With\nthe LOGIN REDIRECT URL setting, we can do this.",
-      "sentence_number": 1942,
+      "sentence_number": 1944,
       "word_count": 10
     },
     {
       "text": "Just add the following\nat the end of the settings.py file in django_project:\nLOGIN_REDIRECT_URL = \"home\"\nNow the user is redirected to our homepage, 'home'.",
-      "sentence_number": 1943,
+      "sentence_number": 1945,
       "word_count": 25
     },
     {
       "text": "And at this moment, our\nwork is complete.",
-      "sentence_number": 1944,
+      "sentence_number": 1946,
       "word_count": 8
     },
     {
       "text": "Once you've restarted the Django server with python\nmanage.py runserver, you should be able to see our login page at\nhttp://127.0.0.1:8000/accounts/login/.",
-      "sentence_number": 1945,
+      "sentence_number": 1947,
       "word_count": 21
     },
     {
       "text": "After entering our superuser credentials, we were sent back to the main page.",
-      "sentence_number": 1946,
+      "sentence_number": 1948,
       "word_count": 13
     },
     {
       "text": "Remember that we didn't have to manually develop a database model or\nimplement any view logic because Django's authentication system already\ndid that for us.",
-      "sentence_number": 1947,
+      "sentence_number": 1949,
       "word_count": 25
     },
     {
       "text": "Calling the User’s Name on The HomePage\nIt would be a good idea to make a change to our base.html template that\nwould show a message to all visitors, whether they are signed in or not.",
-      "sentence_number": 1948,
+      "sentence_number": 1950,
       "word_count": 36
     },
     {
       "text": "The\nis_authenticated attribute can be used for this purpose.",
-      "sentence_number": 1949,
+      "sentence_number": 1951,
       "word_count": 9
     },
     {
       "text": "It will do for now to simply make this code easy to find.",
-      "sentence_number": 1950,
+      "sentence_number": 1952,
       "word_count": 13
     },
     {
       "text": "We can give it a\nbetter look later on when we have more time.",
-      "sentence_number": 1951,
+      "sentence_number": 1953,
       "word_count": 14
     },
     {
       "text": "Modify the base.html file by\ninserting new code behind the </header> tag.",
-      "sentence_number": 1952,
+      "sentence_number": 1954,
       "word_count": 12
     },
     {
       "text": "This is the updated base.html file:\n{% load static %}\n<html>\n<head>\n<title>Django blog</title>\n<link href=\"https://fonts.googleapis.com/css?family=Source+Sans+Pro:400\" rel=\"stylesheet\">\n<link href=\"{% static 'css/base.css' %}\" rel=\"stylesheet\" s>\n</head>\n<body>\n<div>\n<header>\n<div class=\"nav-left\">\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</div>\n<div class=\"nav-right\">\n<a href=\"{% url 'post_new' %}\">+ New Blog Post</a>\n</div>\n</header>\n{% if user.is_authenticated %}\n<p>Hi {{ user.username }}!</p>\n{% else %}\n<p>You are not logged in.</p>\n<a href=\"{% url 'login' %}\">Log In</a>\n{% endif %}\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nThis code will say a user’s name and display Hello if they are logged in.",
-      "sentence_number": 1953,
+      "sentence_number": 1955,
       "word_count": 100
     },
     {
       "text": "Otherwise, it will be a link to our new login page.",
-      "sentence_number": 1954,
+      "sentence_number": 1956,
       "word_count": 11
     },
     {
       "text": "User Log Out Access\nWe included logout template page logic, but how do we log out?",
-      "sentence_number": 1955,
+      "sentence_number": 1957,
       "word_count": 16
     },
     {
       "text": "We can do\nit manually in the Admin panel, but there's a better approach.",
-      "sentence_number": 1956,
+      "sentence_number": 1958,
       "word_count": 14
     },
     {
       "text": "Let's add a log\nout link that goes to the home page.",
-      "sentence_number": 1957,
+      "sentence_number": 1959,
       "word_count": 12
     },
     {
       "text": "With Django auth, this is easy.",
-      "sentence_number": 1958,
+      "sentence_number": 1960,
       "word_count": 6
     },
     {
       "text": "Just below our user greeting, add a % url 'logout' % link in our base.html file.",
-      "sentence_number": 1959,
+      "sentence_number": 1961,
       "word_count": 16
     },
     {
       "text": "This is the updated script:\n{% load static %}\n<html>\n<head>\n<title>Django blog</title>\n<link href=\"https://fonts.googleapis.com/css?family=Source+Sans+Pro:400\" rel=\"stylesheet\">\n<link href=\"{% static 'css/base.css' %}\" rel=\"stylesheet\" s>\n</head>\n<body>\n<div>\n<header>\n<div class=\"nav-left\">\n<h1><a href=\"{% url 'home' %}\">Django blog</a></h1>\n</div>\n<div class=\"nav-right\">\n<a href=\"{% url 'post_new' %}\">+ New Blog Post</a>\n</div>\n</header>\n{% if user.is_authenticated %}\n<p>Hi {{ user.username }}!</p>\n<p><a href=\"{% url 'logout' %}\">Log out</a></p>\n{% else %}\n<p>You are not logged in.</p>\n<a href=\"{% url 'login' %}\">Log In</a>\n{% endif %}\n{% block content %}\n{% endblock content %}\n</div>\n</body>\n</html>\nDjango auth app provides the essential view.",
-      "sentence_number": 1960,
+      "sentence_number": 1962,
       "word_count": 97
     },
     {
       "text": "We must indicate where to send\nlogged-out users.",
-      "sentence_number": 1961,
+      "sentence_number": 1963,
       "word_count": 8
     },
     {
       "text": "Update django project/settings.py with LOGOUT REDIRECT URL.",
-      "sentence_number": 1962,
+      "sentence_number": 1964,
       "word_count": 7
     },
     {
       "text": "We can\nadd it next to our login redirect, so the file should look like this:\nLOGOUT_REDIRECT_URL = \"home\"\nYou'll see a \"log out\" link if you refresh the homepage.",
-      "sentence_number": 1963,
+      "sentence_number": 1965,
       "word_count": 30
     },
     {
       "text": "Go ahead.",
-      "sentence_number": 1964,
+      "sentence_number": 1966,
       "word_count": 2
     },
     {
       "text": "Click it and see where it leads.",
-      "sentence_number": 1965,
+      "sentence_number": 1967,
       "word_count": 7
     },
     {
       "text": "Allow Users to Sign Up\nTo register new users, we need to create our own view.",
-      "sentence_number": 1966,
+      "sentence_number": 1968,
       "word_count": 16
     },
     {
       "text": "However, Django\nsupplies us with a form class called UserCreationForm to make this process\neasier.",
-      "sentence_number": 1967,
+      "sentence_number": 1969,
       "word_count": 15
     },
     {
       "text": "By default, it has three fields: username, password1, and password2.",
-      "sentence_number": 1968,
+      "sentence_number": 1970,
       "word_count": 10
     },
     {
       "text": "Code and URL structure can be organized in numerous ways for user\nauthentication.",
-      "sentence_number": 1969,
+      "sentence_number": 1971,
       "word_count": 13
     },
     {
       "text": "Stop the local server by pressing Ctrl + C, and make a new\napp called \"accounts\" for our sign-up page.",
-      "sentence_number": 1970,
-      "word_count": 20
-    },
-    {
-      "text": "python manage.py startapp accounts\nAdd the app to django_project under INSTALLED APPS in the settings.py\nfile.",
-      "sentence_number": 1971,
-      "word_count": 16
-    },
-    {
-      "text": "Add a new URL path to this app in urls.py of the django project folder below\nthe built-in auth app.",
       "sentence_number": 1972,
       "word_count": 20
     },
     {
-      "text": "path(\"accounts/\", include(\"accounts.urls\")),\nDjango reads this script top-to-bottom.",
+      "text": "python manage.py startapp accounts\nAdd the app to django_project under INSTALLED APPS in the settings.py\nfile.",
       "sentence_number": 1973,
+      "word_count": 16
+    },
+    {
+      "text": "Add a new URL path to this app in urls.py of the django project folder below\nthe built-in auth app.",
+      "sentence_number": 1974,
+      "word_count": 20
+    },
+    {
+      "text": "path(\"accounts/\", include(\"accounts.urls\")),\nDjango reads this script top-to-bottom.",
+      "sentence_number": 1975,
       "word_count": 7
     },
     {
       "text": "Thus url order matters.",
-      "sentence_number": 1974,
+      "sentence_number": 1976,
       "word_count": 4
     },
     {
       "text": "When we\nrequest /accounts/signup, Django first looks in auth, then accounts.",
-      "sentence_number": 1975,
+      "sentence_number": 1977,
       "word_count": 11
     },
     {
       "text": "Create a urls.py file in the new accounts folder using your text editor.",
-      "sentence_number": 1976,
+      "sentence_number": 1978,
       "word_count": 13
     },
     {
       "text": "Fill it\nwith the following code:\nfrom django.urls import path\nfrom .views import SignUpView\nurlpatterns = [\npath(\"signup/\", SignUpView.as_view(), name=\"signup\"),\n]\nNow let’s create the view.",
-      "sentence_number": 1977,
+      "sentence_number": 1979,
       "word_count": 26
     },
     {
       "text": "The view implements UserCreationForm and\nCreateView.",
-      "sentence_number": 1978,
+      "sentence_number": 1980,
       "word_count": 6
     },
     {
       "text": "Go to accounts/views.py and fill in with the following code:\nWe subclass CreateView in SignUpView.",
-      "sentence_number": 1979,
+      "sentence_number": 1981,
       "word_count": 15
     },
     {
       "text": "We use signup.html's built-in\nUserCreationForm and uncreated template.",
-      "sentence_number": 1980,
+      "sentence_number": 1982,
       "word_count": 8
     },
     {
       "text": "After successful registration,\nreverse lazy redirects the user to the login page.",
-      "sentence_number": 1981,
-      "word_count": 12
-    },
-    {
-      "text": "Why is reverse lazy used here rather than reverse?",
-      "sentence_number": 1982,
-      "word_count": 9
-    },
-    {
-      "text": "All generic class-based\nviews don't load URLs when the file is imported.",
       "sentence_number": 1983,
       "word_count": 12
     },
     {
-      "text": "Therefore we use reverse's\nlazy form to load them afterward.",
+      "text": "Why is reverse lazy used here rather than reverse?",
       "sentence_number": 1984,
+      "word_count": 9
+    },
+    {
+      "text": "All generic class-based\nviews don't load URLs when the file is imported.",
+      "sentence_number": 1985,
+      "word_count": 12
+    },
+    {
+      "text": "Therefore we use reverse's\nlazy form to load them afterward.",
+      "sentence_number": 1986,
       "word_count": 10
     },
     {
       "text": "Create signup.html in the templates/registration/ folder.",
-      "sentence_number": 1985,
+      "sentence_number": 1987,
       "word_count": 6
     },
     {
       "text": "Add the following\ncode.",
-      "sentence_number": 1986,
+      "sentence_number": 1988,
       "word_count": 4
     },
     {
       "text": "{% extends \"base.html\" %}\n{% block content %}\n<h2>Sign Up</h2>\n<form method=\"post\">{% csrf_token %}\n{{ form.as_p }}\n<button type=\"submit\">Sign Up</button>\n</form>\n{% endblock content %}\nThis format is familiar.",
-      "sentence_number": 1987,
+      "sentence_number": 1989,
       "word_count": 29
     },
     {
       "text": "We extend our base template at the top, add our logic\nbetween <form></form> tags, use the csrf token for security, and provide a\nsubmit button.",
-      "sentence_number": 1988,
+      "sentence_number": 1990,
       "word_count": 25
     },
     {
       "text": "Finished!",
-      "sentence_number": 1989,
+      "sentence_number": 1991,
       "word_count": 1
     },
     {
       "text": "To test it, run python manage.py runserver and visit\nhttp://127.0.0.1:8000/accounts/signup.",
-      "sentence_number": 1990,
+      "sentence_number": 1992,
       "word_count": 10
     },
     {
       "text": "Link to Sign Up\nAdd a signup link on the logged-out homepage.",
-      "sentence_number": 1991,
+      "sentence_number": 1993,
       "word_count": 12
     },
     {
       "text": "Our users can't know the\nexact URL.",
-      "sentence_number": 1992,
+      "sentence_number": 1994,
       "word_count": 7
     },
     {
       "text": "We may add the URL to our template.",
-      "sentence_number": 1993,
+      "sentence_number": 1995,
       "word_count": 8
     },
     {
       "text": "In accounts/urls.py, we\ngave it the name signup, so that's all we need to add to base.html with the url\ntemplate tag, exactly like our other links.",
-      "sentence_number": 1994,
+      "sentence_number": 1996,
       "word_count": 27
     },
     {
       "text": "Add \"Sign Up\" underneath \"Log In\"\n<a href=\"{% url 'signup' %}\">Sign Up</a>\nLooks much better!",
-      "sentence_number": 1995,
+      "sentence_number": 1997,
       "word_count": 15
     },
     {
       "text": "GitHub\nWe haven't made a git commit in a while.",
-      "sentence_number": 1996,
+      "sentence_number": 1998,
       "word_count": 10
     },
     {
       "text": "Do that, then push our code to\nGitHub.",
-      "sentence_number": 1997,
+      "sentence_number": 1999,
       "word_count": 8
     },
     {
       "text": "First, check git status for new changes.",
-      "sentence_number": 1998,
+      "sentence_number": 2000,
       "word_count": 7
     },
     {
       "text": "git status\ngit add -A\ngit commit -m \"forms and user accounts\"\nCreate a new repo on GitHub.",
-      "sentence_number": 1999,
+      "sentence_number": 2001,
       "word_count": 18
     },
     {
       "text": "I'll call it blog.",
-      "sentence_number": 2000,
+      "sentence_number": 2002,
       "word_count": 4
     },
     {
       "text": "After creating a new GitHub\nrepo, I can input the following commands.",
-      "sentence_number": 2001,
+      "sentence_number": 2003,
       "word_count": 12
     },
     {
       "text": "Replace macvicquayns with your\nGitHub username.",
-      "sentence_number": 2002,
+      "sentence_number": 2004,
       "word_count": 6
     },
     {
       "text": "git remote add origin https://github.com/MacVicquayns/blog.git\ngit branch -M main\ngit push -u origin main\nStatic Files\nPreviously, we configured our static files by establishing a static folder,\ndirecting STATICFILES DIRS to it, and adding % load static % to our\nbase.html template.",
-      "sentence_number": 2003,
+      "sentence_number": 2005,
       "word_count": 42
     },
     {
       "text": "We need a few extra steps because Django won't support\nstatic files in production.",
-      "sentence_number": 2004,
+      "sentence_number": 2006,
       "word_count": 14
     },
     {
       "text": "First, use Django's collectstatic command to assemble all static files into a\ndeployable folder.",
-      "sentence_number": 2005,
+      "sentence_number": 2007,
       "word_count": 14
     },
     {
       "text": "Second, set the STATIC_ROOT setting to the staticfiles\nfolder.",
-      "sentence_number": 2006,
+      "sentence_number": 2008,
       "word_count": 9
     },
     {
       "text": "Third, set STATICFILES_STORAGE, collectstatic's file storage\nengine.",
-      "sentence_number": 2007,
+      "sentence_number": 2009,
       "word_count": 7
     },
     {
       "text": "Here's what the revised django project/settings.py file looks like:\nNow go to the command line and run python manage.py collectstatic:\nA new staticfiles folder containing an admin and a css folder has been added\nto your project folder.",
-      "sentence_number": 2008,
+      "sentence_number": 2010,
       "word_count": 38
     },
     {
       "text": "The admin is the static files from the default admin,\nand the css is our own.",
-      "sentence_number": 2009,
+      "sentence_number": 2011,
       "word_count": 16
     },
     {
       "text": "The collectstatic command must be executed before\neach new deployment in order to compile the files into the staticfiles folder\nthat is then utilized in production.",
-      "sentence_number": 2010,
+      "sentence_number": 2012,
       "word_count": 26
     },
     {
       "text": "To avoid overlooking it, this process is\ncommonly automated in larger projects, but that is outside the scope of our\ncurrent work.",
-      "sentence_number": 2011,
+      "sentence_number": 2013,
       "word_count": 22
     },
     {
       "text": "There are a number of methods for delivering these precompiled static files in\nproduction, but we'll be using the WhiteNoise package, which is currently the\nmost popular option.",
-      "sentence_number": 2012,
+      "sentence_number": 2014,
       "word_count": 28
     },
     {
       "text": "To begin, install the newest version with pip:\npython -m pip install whitenoise==5.3.0\nThen update django project/settings.py:\nAdd whitenoise above staticfiles in INSTALLED APPS\nAdd WhiteNoiseMiddleware to MIDDLEWARE.",
-      "sentence_number": 2013,
+      "sentence_number": 2015,
       "word_count": 28
     },
     {
       "text": "Swap WhiteNoise for STATICFILES STORAGE\nThe updated file should look like this:\nAfter all, these, rerun python manage.py collectstatic.",
-      "sentence_number": 2014,
+      "sentence_number": 2016,
       "word_count": 19
     },
     {
       "text": "There will be a small warning.",
-      "sentence_number": 2015,
+      "sentence_number": 2017,
       "word_count": 6
     },
     {
       "text": "This will overwrite existing files!",
-      "sentence_number": 2016,
+      "sentence_number": 2018,
       "word_count": 5
     },
     {
       "text": "You sure?",
-      "sentence_number": 2017,
+      "sentence_number": 2019,
       "word_count": 2
     },
     {
       "text": "Enter \"yes\" WhiteNoise regenerates the static files in the same folder.",
-      "sentence_number": 2018,
+      "sentence_number": 2020,
       "word_count": 11
     },
     {
       "text": "Static files are difficult for newbies, so here's a quick recap of our Blog site's\nstages.",
-      "sentence_number": 2019,
+      "sentence_number": 2021,
       "word_count": 16
     },
     {
       "text": "In Chapter 5, we built a top-level static folder for local development\nand changed STATICFILES DIRS.",
-      "sentence_number": 2020,
+      "sentence_number": 2022,
       "word_count": 16
     },
     {
       "text": "In this chapter, we added STATIC\nROOT and STATICFILES STORAGE parameters before running\ncollectstatic, which assembled all static files into a single staticfiles folder.",
-      "sentence_number": 2021,
+      "sentence_number": 2023,
       "word_count": 24
     },
     {
       "text": "Installed whitenoise, updated INSTALLED APPS, MIDDLEWARE, and\nSTATICFILES STORAGE, then ran collectstatic.",
-      "sentence_number": 2022,
+      "sentence_number": 2024,
       "word_count": 12
     },
     {
       "text": "Most developers, like myself, have difficulties remembering these procedures\nand rely on notes.",
-      "sentence_number": 2023,
+      "sentence_number": 2025,
       "word_count": 13
     },
     {
       "text": "Time for Heroku\nHere we are, at the third attempt at using Heroku to launch a website.",
-      "sentence_number": 2024,
+      "sentence_number": 2026,
       "word_count": 17
     },
     {
       "text": "Set up\nGunicorn as your primary web server:\npython -m pip install gunicorn==20.1.0\nCreate a requirements.txt file to store the current virtual environment's\ncontents with this command.",
-      "sentence_number": 2025,
+      "sentence_number": 2027,
       "word_count": 27
     },
     {
       "text": "python -m pip freeze > requirements.txt\nIn django project/settings.py, update ALLOWED HOSTS.",
-      "sentence_number": 2026,
+      "sentence_number": 2028,
       "word_count": 12
     },
     {
       "text": "ALLOWED_HOSTS = [\".herokuapp.com\", \"localhost\", \"127.0.0.1\"]\nAlso, make sure you have a manage.py file and a Procfile and runtime.txt file\nin the root folder of our project.",
-      "sentence_number": 2027,
+      "sentence_number": 2029,
       "word_count": 26
     },
     {
       "text": "Put this code in the Procfile:\nweb: gunicorn django_project.wsgi --log-file –\nPut your current version of Python in the runtime.txt file and save.",
-      "sentence_number": 2028,
+      "sentence_number": 2030,
       "word_count": 23
     },
     {
       "text": "Now, check the git status, and push everything to your GitHub.",
-      "sentence_number": 2029,
+      "sentence_number": 2031,
       "word_count": 11
     },
     {
       "text": "Run these\ncommands in this order:\ngit status\ngit add -A\ngit commit -m \"Heroku config\"\ngit push -u origin main\nDeploy to Heroku\nLog in to your Heroku account from the command line.",
-      "sentence_number": 2030,
+      "sentence_number": 2032,
       "word_count": 34
     },
     {
       "text": "heroku login\nHeroku will then create a new container where our application will reside\nonce the create command has been executed.",
-      "sentence_number": 2031,
+      "sentence_number": 2033,
       "word_count": 21
     },
     {
       "text": "If you don't specify a name and\njust run heroku create, Heroku will come up with one for you at random;\nhowever, you are free to choose your own name, provided it is unique on\nHeroku.",
-      "sentence_number": 2032,
+      "sentence_number": 2034,
       "word_count": 36
     },
     {
       "text": "You can't use the name d12-blog because I've already used it.",
-      "sentence_number": 2033,
+      "sentence_number": 2035,
       "word_count": 11
     },
     {
       "text": "You\nmust use a different alphabetic and numeric sequence.",
-      "sentence_number": 2034,
+      "sentence_number": 2036,
       "word_count": 9
     },
     {
       "text": "heroku create d12-blog\nThe prior apps did not have static file configurations.",
-      "sentence_number": 2035,
+      "sentence_number": 2037,
       "word_count": 12
     },
     {
       "text": "Thus we used heroku\nconfig:set DISABLE COLLECTSTATIC=1 to prevent Heroku from running\nthe Django collectstatic command automatically.",
-      "sentence_number": 2036,
+      "sentence_number": 2038,
       "word_count": 17
     },
     {
       "text": "But now that we have static\nfiles set up, we can relax and let this happen automatically during\ndeployment.",
-      "sentence_number": 2037,
+      "sentence_number": 2039,
       "word_count": 19
     },
     {
       "text": "Adding a web process to Heroku and pushing our code there will get the\ndyno up and running.",
-      "sentence_number": 2038,
+      "sentence_number": 2040,
       "word_count": 18
     },
     {
       "text": "git push heroku main\nheroku ps:scale web=1\nYour new app's URL can be found in the terminal output or by typing\n\"heroku open.\"\nPostgreSQL vs SQLite\nWe have been using Django's preconfigured SQLite database on our local\nmachines and in production so far in this book.",
-      "sentence_number": 2039,
+      "sentence_number": 2041,
       "word_count": 46
     },
     {
       "text": "It's far simpler to set up and\nuse than a server-based database.",
-      "sentence_number": 2040,
+      "sentence_number": 2042,
       "word_count": 12
     },
     {
       "text": "Although it's convenient, there is a price to\npay for it.",
-      "sentence_number": 2041,
+      "sentence_number": 2043,
       "word_count": 11
     },
     {
       "text": "Because Heroku uses a transient file system, any modifications\nmade to the cloud-based db.sqlite3 file are lost anytime a new deployment or\nserver restart takes place.",
-      "sentence_number": 2042,
+      "sentence_number": 2044,
       "word_count": 26
     },
     {
       "text": "On the free tier that we are now using, the servers\nmay be rebooted as frequently as once every 24 hours.",
-      "sentence_number": 2043,
+      "sentence_number": 2045,
       "word_count": 21
     },
     {
       "text": "This ensures that any changes made to the database in a development\nenvironment may be replicated in a production environment with a simple\npush.",
-      "sentence_number": 2044,
+      "sentence_number": 2046,
       "word_count": 24
     },
     {
       "text": "However, new blog posts or changes you make to the live website\nwon't last forever.",
-      "sentence_number": 2045,
+      "sentence_number": 2047,
       "word_count": 15
     },
     {
       "text": "Thanks to some spare code, our Blog site now has sign up, log in, and log out\ncapabilities.",
-      "sentence_number": 2046,
+      "sentence_number": 2048,
       "word_count": 18
     },
     {
       "text": "Several potential security issues can arise when developing a custom user\nauthentication method, but Django has already dealt with them.",
-      "sentence_number": 2047,
+      "sentence_number": 2049,
       "word_count": 20
     },
     {
       "text": "We deployed\nour site to Heroku with the static files set up correctly for production.",
-      "sentence_number": 2048,
+      "sentence_number": 2050,
       "word_count": 15
     },
     {
       "text": "Well\ndone!",
-      "sentence_number": 2049,
+      "sentence_number": 2051,
       "word_count": 2
     },
     {
       "text": "C\nONCLUSION\nThe completion of this fantastic Django course is a cause for celebration.",
-      "sentence_number": 2050,
+      "sentence_number": 2052,
       "word_count": 14
     },
     {
       "text": "We\nbegan with nothing and have already completed five separate web apps from\nscratch using all of the primary capabilities of Django, including templates,\nviews, urls, users, models, security, testing, and deployment.",
-      "sentence_number": 2051,
+      "sentence_number": 2053,
       "word_count": 32
     },
     {
       "text": "You should now\nfeel confident creating your own cutting-edge websites with Django.",
-      "sentence_number": 2052,
+      "sentence_number": 2054,
       "word_count": 12
     },
     {
       "text": "Putting what you've learned into practice is essential if you want to become\nproficient at it.",
-      "sentence_number": 2053,
+      "sentence_number": 2055,
       "word_count": 16
     },
     {
       "text": "Our Blog and Newspaper sites share a feature known as\nCRUD (Create-Read-Update-Delete) with a wide variety of other web apps.",
-      "sentence_number": 2054,
+      "sentence_number": 2056,
       "word_count": 20
     },
     {
       "text": "Can you, for instance, develop a web-based to-do list?",
-      "sentence_number": 2055,
+      "sentence_number": 2057,
       "word_count": 9
     },
     {
       "text": "Will you create an app\nsimilar to Twitter or Facebook?",
-      "sentence_number": 2056,
+      "sentence_number": 2058,
       "word_count": 10
     },
     {
       "text": "You don't need anything else because you\nalready have it all.",
-      "sentence_number": 2057,
+      "sentence_number": 2059,
       "word_count": 11
     },
     {
       "text": "The ideal way to learn the ropes is to construct many\nsimple projects and gradually increase their complexity as you gain\nexperience and knowledge.",
-      "sentence_number": 2058,
+      "sentence_number": 2060,
       "word_count": 24
     },
     {
       "text": "Follow-Up Actions\nThere is a lot more to learn about Django than what we covered in this book.",
-      "sentence_number": 2059,
+      "sentence_number": 2061,
       "word_count": 18
     },
     {
       "text": "This is crucial if you plan on creating massive websites with hundreds of\nthousands or even millions of monthly visitors.",
-      "sentence_number": 2060,
+      "sentence_number": 2062,
       "word_count": 20
     },
     {
       "text": "There's no need to look\nfurther than Django itself for this.",
-      "sentence_number": 2061,
+      "sentence_number": 2063,
       "word_count": 11
     },
     {
       "text": "Django for Professionals is a follow-up\nbook I wrote that covers topics like using Docker, installing a production\ndatabase locally like PostgreSQL, registering advanced users, securing the\nsite, optimizing performance, and much more.",
-      "sentence_number": 2062,
+      "sentence_number": 2064,
       "word_count": 33
     },
     {
       "text": "When building mobile apps (iOS/Android) or websites with a dedicated\nJavaScript front-end framework like Vue, React, or Angular, Django is often\nutilized as the back-end API.",
-      "sentence_number": 2063,
+      "sentence_number": 2065,
       "word_count": 26
     },
     {
       "text": "Django REST Framework181, a third-party\nprogram that is tightly integrated with Django itself, makes it possible to\nconvert any preexisting Django website into an API with no additional\ncoding.",
-      "sentence_number": 2064,
+      "sentence_number": 2066,
       "word_count": 29
     },
     {
       "text": "If you're interested in reading more, I've devoted a complete book to\nthe subject, entitled Django for APIs.",
-      "sentence_number": 2065,
+      "sentence_number": 2067,
       "word_count": 18
     },
     {
       "text": "Third-party bundles\nAs we’ve seen in this book, 3rd party packages are an essential element of the\nDjango ecosystem, especially regarding deployment or enhancements\nsurrounding user registration.",
-      "sentence_number": 2066,
+      "sentence_number": 2068,
       "word_count": 27
     },
     {
       "text": "It’s not uncommon for a professional Django\nwebsite to rely on dozens of such packages.",
-      "sentence_number": 2067,
+      "sentence_number": 2069,
       "word_count": 15
     },
     {
       "text": "Caution: don't install 3rd party packages only to save a little time now.",
-      "sentence_number": 2068,
+      "sentence_number": 2070,
       "word_count": 13
     },
     {
       "text": "Any\nadditional packages increase the chances that their maintainer won't fix all\nbugs or upgrade to the newest version of Django.",
-      "sentence_number": 2069,
+      "sentence_number": 2071,
       "word_count": 21
     },
     {
       "text": "Learn its uses.",
-      "sentence_number": 2070,
+      "sentence_number": 2072,
       "word_count": 3
     },
     {
       "text": "Django Packages is a complete database of all available third-party apps if\nyou're interested in viewing additional packages.",
-      "sentence_number": 2071,
+      "sentence_number": 2073,
       "word_count": 18
     }
   ],
   "metadata": {
-    "total_paragraphs": 2071,
-    "total_words": 39624,
+    "total_paragraphs": 2073,
+    "total_words": 39626,
     "chapters": [],
     "sections": [],
     "content_types": {},
-    "extracted_concepts_count": 10,
+    "extracted_concepts_count": 94,
     "concept_types": [
+      "Important Fact",
       "Key Definition",
       "Main Idea"
     ],
-    "contextgem_processed": true,
     "original_tokens": 57001,
     "was_chunked": true,
-    "chunks_processed": 10
+    "processing_method": "openai"
   },
   "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
   "format": "pdf",
   "extracted_concepts": [
     {
-      "content": "Flask application organization",
+      "content": "Full-stack development with Python involves both front-end and back-end technologies, enabling developers to build complete web applications independently.",
       "concept_name": "Main Idea",
       "type": "concept",
-      "source_sentence": "The text discusses the importance of organizing a Flask application's code for efficient development and deployment, using patterns such as packages and modules.\n\n  2. CONCEPT: Repository\n     TYPE: Key Definition\n     SOURCE: The repository is the folder for a program on the server, often managed by version control systems.\n\n  3. CONCEPT: Package\n     TYPE: Key Definition\n     SOURCE: A package is a Python library that holds the code for an application, consisting of related modules.\n\n  4. CONCEPT: Module\n     TYPE: Key Definition\n     SOURCE: A module is one Python file that other Python files can import. A package is nothing more than a collection of related modules.\n\n  5. CONCEPT: Run script (run.py)\n     TYPE: Important Fact\n     SOURCE: The run script is executed to launch a development server and obtains a copy of the application from the package.\n\n  6. CONCEPT: Requirements file (requirements.txt)\n     TYPE: Key Definition\n     SOURCE: The requirements file lists all Python packages on which your application depends, with different files for development and production dependencies.\n\n  7. CONCEPT: Configuration file (config.py)\n     TYPE: Key Definition\n     SOURCE: The configuration file contains variables your project needs for configuration, including API keys and database URIs with embedded passwords.\n\n  8. CONCEPT: Instance-specific configuration file (instance/config.py)\n     TYPE: Key Definition\n     SOURCE: The instance-specific configuration file contains variables unique to this instance of your program, such as DEBUG = True on a local development system.\n\n  9. CONCEPT: Application initialization\n     TYPE: Main Idea\n     SOURCE: All Flask applications need to create an application instance using the Flask class and provide it with the name of the main module or package.\n\n  10. CONCEPT: WSGI protocol\n     TYPE: Key Definition\n     SOURCE: The WSGI (pronounced \"wiz-ghee\") protocol is a method used by the web server to send all requests from clients to the application instance for handling.",
+      "source_sentence": "Full-stack development with Python The Python programming language has many advantages, one of which is a relatively quick development cycle.",
       "chunk_index": 0,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Main Idea",
-        "chunk_index": 0,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Flask is a web framework for Python.",
+      "content": "Django is an open-source framework that supports security, user management, database migration, and RESTful Web APIs.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "The text mentions that Flask is a web framework for Python.\n\n  2. CONCEPT: Jinja2 is a template engine used by Flask.\n     TYPE: Key Definition\n     SOURCE: The text states that Jinja2 is built into the application by the Flask function render_template().\n\n  3. CONCEPT: Templates are files containing both static and dynamic data placeholders.\n     TYPE: Key Definition\n     SOURCE: The text explains that templates are files that contain both static and dynamic data placeholders.\n\n  4. CONCEPT: Variables in Jinja2 templates are marked with double curly brackets ({{ }} ).\n     TYPE: Important Fact\n     SOURCE: The text mentions that variables in Jinja2 templates are marked with double curly brackets.\n\n  5. CONCEPT: Filters in Jinja2 can change parts of values in the template when they come on.\n     TYPE: Main Idea\n     SOURCE: The text explains that filters in Jinjia2 work like pipes in Linux commands and can change parts of values in the template.\n\n  6. CONCEPT: Control structures in Jinja2 can be used to change how the template is run.\n     TYPE: Key Definition\n     SOURCE: The text mentions that control structures in Jinja2 can be used to change how the template is run.\n\n  7. CONCEPT: Conditions in Jinja2 are if-else statements used in templates.\n     TYPE: Important Fact\n     SOURCE: The text provides an example of using an if-else statement in a Jinja2 template.\n\n  8. CONCEPT: Loops in Jinja2 are for loops used to iterate over lists or other data structures.\n     TYPE: Main Idea\n     SOURCE: The text explains that loops in Jinja2 are for loops used to iterate over lists or other data structures.\n\n  9. CONCEPT: Bootstrap is a popular CSS framework.\n     TYPE: Key Definition\n     SOURCE: The text mentions that Bootstrap is the most common CSS framework.\n\n  10. CONCEPT: Flask can be integrated with Bootstrap for styling web pages.\n      TYPE: Main Idea\n      SOURCE: The text states that this chapter will look at an open-source Flask project with a beautiful UI styled with Bootstrap.",
+      "source_sentence": "Django The developer community for the free and open-source project Django is sizable. As a result, its security, user, and role management, as well as database migration management feature, frequently improve.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Flask is a micro-framework that is lighter than Django and is often used for developing APIs.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Another well-liked Python web framework is Flask. It's referred to as a micro-framework and is lighter than Django. The back end of APIs is frequently developed using Flask.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "PEP 8 provides style guidelines for writing Python code, emphasizing four spaces per indentation level.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Guidelines for coding style are included in PEP 8. PEP 8: Style Guide for Python Code Python code should follow PEP 8 as the coding style.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "A docstring is a string literal used to document modules, functions, classes, or methods, and appears as the first statement in their definition.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "PEP 257: Docstring Conventions Another Python standard is covered by PEP 257, and it is called docstrings.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Relative imports in Flask apps use dot notation to import modules relative to the current package, enhancing modularity.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Relative imports When developing Flask apps, relative imports make things a little easier. The idea is straightforward.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Creating a virtual environment isolates project dependencies, allowing multiple projects to use different package versions without conflicts.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Virtual environments are highly useful because they prevent the system's Python interpreter from becoming clogged with mismatched packages and versions.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Using virtualenv and virtualenvwrapper helps manage isolated environments for Python projects, enabling different package versions per project.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "virtualenv is a program that isolates whatever application you are developing in a virtual environment. virtualenvwrapper is a package that lets you control the virtual environments that virtualenv makes.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Organizing Flask applications into modules and packages improves maintainability and scalability, especially for larger projects.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Most Flask examples will have all the code in a single file, usually called app.py. This works well for small projects with a limited number of routes and fewer than a few hundred lines of application code, such as those used for tutorials.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The application instance in Flask is created using 'app = Flask(__name__)', which is essential for handling requests via WSGI.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "All Flask applications need to create an application instance. Using a protocol called WSGI, the web server sends all requests from clients to this object so that it can handle them.",
+      "chunk_index": 0,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Blueprints are essentially self-contained definitions of your application's components.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Blueprints are essentially self-contained definitions of your application's components.",
       "chunk_index": 1,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 1,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Templates in Flask",
+      "content": "Routes map URLs to Python functions, enabling dynamic URL handling with variable rules and converters.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "A route is a link between a URL and the function that calls it... Flask can handle these URLs using a special app.route decorator.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Decorators in Python are functions used to modify or enhance other functions, such as view functions in Flask.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Decorators in Python are functions used to tweak other functions.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Configuration variables are stored in config.py and can be loaded into the Flask app via app.config, enabling flexible setup.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "The templates you worked with in this course are one-way, meaning that information can only flow from the server to the user.\n\n  2. CONCEPT: HTTP Methods (GET/POST)\n     TYPE: Important Fact\n     SOURCE: The standard way to send and receive information from and to a web server is through HTTP methods. GET and POST are often used.\n\n  3. CONCEPT: GET Method\n     TYPE: Key Definition\n     SOURCE: GET is the most common way of getting or sending information to a website. It is typically used for retrieving information from a web server.\n\n  4. CONCEPT: POST Method\n     TYPE: Key Definition\n     SOURCE: POST is a way of doing this securely, so GET is an insecure way of getting the most commonly used information. People often use the POST method to send information to a web server.\n\n  5. CONCEPT: Web Forms\n     TYPE: Main Idea\n     SOURCE: Web forms are a way to send information to a website, typically using the POST method for secure transmission.\n\n  6. CONCEPT: Flask Request Object\n     TYPE: Key Definition\n     SOURCE: The request object in Flask can be used to determine whether a GET or POST request was made.\n\n  7. CONCEPT: Handling Form Submissions in Flask\n     TYPE: Main Idea\n     SOURCE: In Flask, you can handle form submissions by using the request object to check for a POST request and then processing the submitted data accordingly.\n\n  8. CONCEPT: Using if-else clauses in Flask\n     TYPE: Important Fact\n     SOURCE: You can use if-else clauses in Flask to handle different types of requests, such as GET and POST.\n\n  9. CONCEPT: Dynamic Routing in Flask\n     TYPE: Key Definition\n     SOURCE: In Flask, you can create dynamic routes by using the <> syntax in your route decorator. This allows you to pass variables from the URL to your function.\n\n 10. CONCEPT: Flask Form Data Access\n     TYPE: Important Fact\n     SOURCE: You can access form data submitted through a POST request in Flask by using the request.form dictionary. The keys in this dictionary correspond to the names of the input fields in your HTML form.",
+      "source_sentence": "Each line of the config.py file should contain a variable assignment. The variables in config.py are used to configure Flask and its extensions...",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The instance folder is used to store sensitive configuration data outside version control, such as API keys and database URIs.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "The instance folder is a subdirectory of the repository's root directory and contains an application-specific configuration file.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Flask supports dynamic URL routing with variable rules, allowing parts of URLs to be passed as parameters to view functions.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "The portion of a URL for a route that is enclosed in angle brackets changes... Flask supports variable rules.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "render_template() function is used to render HTML templates stored in the templates folder, separating business and presentation logic.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Flask expects to find template files in the leading application directory's templates subfolder... Flask can render HTML using two methods: as string or using render_template function.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Jinja2 is a Python template engine integrated with Flask, allowing dynamic content rendering with placeholders, filters, and control structures.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Jinja2 is a Python template engine. It can be used instead of Python's standard string interpolation... Templates are files that contain both static and dynamic data placeholders.",
+      "chunk_index": 1,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Bootstrap is a free web framework that simplifies creating aesthetically pleasing, responsive websites compatible with desktop and mobile browsers.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "What is Bootstrap? Twitter's Bootstrap is a free web browser framework that makes it simple to construct aesthetically pleasing, clean web pages that function on desktop and mobile platforms with all current web browsers.",
       "chunk_index": 2,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 2,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Flask Application Object",
+      "content": "Bootstrap is a client-side framework that does not directly interact with the server; UI elements are created using HTML, CSS, and JavaScript after server responses.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Bootstrap is a client-side framework that doesn't directly interact with the server. The user interface elements must be created using HTML, CSS, and JavaScript code once the server sends HTML answers...",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Using templates makes it easier to integrate Bootstrap into web pages.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "It is easiest to do all of this using templates.",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Flask-Bootstrap is a Flask extension that simplifies adding Bootstrap to Flask applications, installable via pip.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "However, you can do this even better and faster with a Flask extension called Flask-Bootstrap, and you can install it with pip: pip install flask-bootstrap.",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Template inheritance allows creating a base HTML template that other templates extend, reducing code repetition.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "app = Flask (__name__)\n\n  2. CONCEPT: SQLALCHEMY_DATABASE_URI\n     TYPE: Configuration Setting\n     SOURCE: app.config ['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.sqlite3'\n\n  3. CONCEPT: SQLAlchemy\n     TYPE: Library\n     SOURCE: db = SQLAlchemy(app)\n\n  4. CONCEPT: Object Relation Mapping (ORM)\n     TYPE: Methodology\n     SOURCE: Object Relation Mapping is used to identify and store objects.\n\n  5. CONCEPT: RDBMS (Relational Database Management System)\n     TYPE: System\n     SOURCE: A relational database management system (RDBMS) is a group of programs experts use to create, update, administer and otherwise interact with a relational database like SQL.\n\n  6. CONCEPT: CRUD Operations\n     TYPE: Operations\n     SOURCE: SQLAlchemy helps you do CRUD operations without having to write SQL statements.\n\n  7. CONCEPT: Table Structure in RDBMS\n     TYPE: Representation of Data\n     SOURCE: The objects are referenced by tables like Ms Excel. Tables hold the information in the RDBMS server.\n\n  8. CONCEPT: Columns and Rows in a Database\n     TYPE: Structural Elements\n     SOURCE: We want to store users, and our users are going to have columns for name and email of a user. The columns will represent pieces of information, and the rows will represent individual items.\n\n  9. CONCEPT: students Model\n     TYPE: Database Model\n     SOURCE: class students(db.Model):\n\n  10. CONCEPT: Primary Key\n     TYPE: Identifier\n     SOURCE: _id = db.Column('id', db.Integer, primary_key = True)",
+      "source_sentence": "Template inheritance is an extremely useful tool, so you're not repeating HTML code, JavaScript, or whatever it's going to be throughout your entire website.",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "HTTP GET retrieves data from the server, suitable for non-sensitive information; POST sends data securely, suitable for sensitive info or form submissions.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "GET is the most common way of getting or sending information to a website... POST is a way of doing this securely, so GET is an insecure way of getting the most commonly used information.",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Web forms use HTML form tags to collect user input and send data to the server via POST requests.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Let's now go through a basic example of web forms in a website. You can use the same app.py we have been working with here. You only need to add a few different pages for this example first.",
+      "chunk_index": 2,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "In the login.html script, we had name = nm, so we'll put nm as a dictionary key in the code.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "In the login.html script, we had name = nm, so we'll put nm as a dictionary key in the code.",
       "chunk_index": 3,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 3,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Flask app deployment on various web hosting platforms (Amazon Web Services EC2, Heroku, Digital Ocean)",
+      "content": "request.form comes in as a dictionary, meaning you can access each object using the key.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "request.form comes in as a dictionary, meaning you can access each object using the key.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Sessions are stored on the web server and are temporary, working while the user is browsing and disappearing after they leave.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "The text provides information about deploying a Flask app on different web hosting platforms such as Amazon Web Services EC2, Heroku, and Digital Ocean.\n\n  2. CONCEPT: AWS Elastic Compute Cloud (EC2)\n     TYPE: Important Fact\n     SOURCE: AWS EC2 is a service provided by Amazon Web Services that allows users to easily create virtual servers or instances.\n\n  3. CONCEPT: Heroku\n     TYPE: Key Definition\n     SOURCE: Heroku is a platform for hosting applications developed on top of existing AWS capabilities, such as Elastic Compute Cloud (EC2).\n\n  4. CONCEPT: Digital Ocean\n     TYPE: Important Fact\n     SOURCE: Digital Ocean is an alternative to Amazon Web Services EC2 that provides similar benefits but with a simpler interface and ease of use compared to the AWS control panel.\n\n  5. CONCEPT: Requirements for deployment\n     TYPE: Main Idea\n     SOURCE: To deploy to Heroku, you need to add two files (requirements.txt and Procfile) and install Gunicorn.\n\n  6. CONCEPT: Gunicorn\n     TYPE: Key Definition\n     SOURCE: Gunicorn is a web server that can be used to run Flask applications in production environments.\n\n  7. CONCEPT: Git repository\n     TYPE: Important Fact\n     SOURCE: A git repository should have been created for your project's directory before deploying to Heroku.\n\n  8. CONCEPT: Procfile\n     TYPE: Key Definition\n     SOURCE: The Procfile is a special file used by Heroku to determine how to launch your Flask application.\n\n  9. CONCEPT: Django\n     TYPE: Key Definition\n     SOURCE: Django is a Python web framework that allows developers to create complex, database-driven websites quickly and easily.\n\n  10. CONCEPT: Command Line\n     TYPE: Important Fact\n     SOURCE: Developers use the Command Line to install and configure Django projects.",
+      "source_sentence": "Sessions are great because they're temporary. They're stored on the web server and simply there to quickly access information between your website's different pages.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Cookies are stored on the client side in the user's web browser and are not safe for sensitive information.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Cookie: This feature is stored on the client side (in the user’s web browser) and is NOT a safe way to store sensitive information like passwords.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Flask's flash() function is used to display temporary messages to the user across pages.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "flash() Function Instead of thinking about changing the whole page or passing through some new variables to show on the screen, you can just flash a message quickly with a module called flash().",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Sessions are encrypted and stored on the server, making them a safe way to store user data.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Session: This is saved in a temporary folder on the web server. It is encrypted and is a safe way to store information.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Flask-SQLAlchemy is an extension that simplifies working with relational databases in Flask applications.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "A Flask add-on called Flask-SQLAlchemy makes it simpler to use SQLAlchemy in Flask programs.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Object-Relational Mapping (ORM) relates database tables to programming objects, simplifying CRUD operations.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Object Relation Mapping is used to identify and store objects. SQL is based on objects. The objects are referenced by tables like Ms Excel.",
+      "chunk_index": 3,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "A class to represent user objects in the database with attributes for name and email.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "We define a class to represent this user object in our database.",
       "chunk_index": 4,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 4,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Django is a web framework used for building dynamic websites.",
+      "content": "Every object in the database needs a unique identifier, which can be a string, boolean, or integer.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Every single object that we have in our database needs to have a unique identification.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The __init__() method initializes user objects with optional properties that can be None.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "This __init__() method will take the variables we need to create a new object because technically, we can store some values here that will be None values.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The database is created with db.create_all() if it does not already exist.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "At the bottom of the script to add something db.create_all(). This is a method to actually create this database if it doesn't already exist in our program.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The Flask application uses SQLAlchemy to define models for users and books.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "The first paragraph of the text.\n\n  2. CONCEPT: HTTP Request/Response Cycle\n     TYPE: Main Idea\n     SOURCE: The section titled \"HTTP Request/Response Cycle\".\n\n  3. CONCEPT: Model-View-Controller (MVC) and Model-View-Template (MVT)\n     TYPE: Key Definition\n     SOURCE: The section titled \"Model-View-Controller (MVC) and Model-View-Template (MVT)\".\n\n  4. CONCEPT: Django's approach to MVC is called MVTU, with four main parts: Model, View, Template, URL Configuration.\n     TYPE: Key Definition\n     SOURCE: The section titled \"Model-View-Controller (MVC) and Model-View-Template (MVT)\".\n\n  5. CONCEPT: A Django project can have multiple apps, each with a specific set of functions.\n     TYPE: Key Fact\n     SOURCE: The section titled \"Creating A Blank App\".\n\n  6. CONCEPT: To make a dynamic web page in Django, you need four separate files that follow the MVT pattern: models.py, views.py, templates.html, and urls.py.\n     TYPE: Key Fact\n     SOURCE: The section titled \"Designing Pages\".\n\n  7. CONCEPT: In this text's example, the data is hardcoded into a view instead of being connected to a database.\n     TYPE: Important Fact\n     SOURCE: The paragraph starting with \"Since our project today does not need to connect to a database...\".\n\n  8. CONCEPT: To display a response in Django, you can use the built-in HttpResponse method.\n     TYPE: Key Fact\n     SOURCE: The paragraph starting with \"Basically, we're saying that whenever we call the function homePageView...\".\n\n  9. CONCEPT: In this text, a new app called 'webpages' is created within an existing Django project.\n     TYPE: Important Fact\n     SOURCE: The section titled \"Creating A Blank App\".\n\n  10. CONCEPT: To make the new app part of the Django project, you must add it to the my_project/settings.py file under 'INSTALLED APPS'.\n      TYPE: Key Fact\n      SOURCE: The paragraph starting with \"Designing Pages\".",
+      "source_sentence": "db = SQLAlchemy(app)\nclass students(db.Model):\n_id = db.Column('id', db.Integer, primary_key = True)\nname = db.Column(db.String(100))\nemail = db.Column(db.String(100))",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "CRUD operations include creating, reading, updating, and deleting data in the database.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Now is time to watch it work and build web apps... the app we're making here isn't meant to be valid on its own. But once you know how to write a simple web app that takes user input and stores it in a database, you are well on your way to writing any web app you can think of.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "To handle user input, HTML forms send data via POST requests to Flask routes.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "We have a simple web app that doesn't do much now. We want to create an app to take the users' content... We add an HTML form that sends information from the front-end of our application through Flask and to the back-end.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The application uses SQLAlchemy models to store book titles in a database.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "This is how each book will be stored in our database.\nclass Book(db.Model):\ntitle = db.Column(db.String(80), unique=True, nullable=False, primary_key=True)",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The home() function handles form submissions to add books and retrieves all books to display.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "def home():\nif request.form:\nbook = Book(title=request.form.get(\"title\"))\ndb.session.add(book)\ndb.session.commit()\nreturn render_template(\"index.html\")",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Error handling is implemented with try-except blocks around database operations to prevent crashes on duplicate entries.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Our code now has error handling codes. When we try to add a book with the same title twice or change the title of an existing book to one that already exists, an error will occur.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Deployment options include AWS EC2, Heroku, and Digital Ocean, each with different features and ease of use.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "There are thousands of service providers that give this, but I use and recommend the three below... Amazon Web Services EC2, Heroku, Digital Ocean.",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "To deploy on Heroku, create requirements.txt and Procfile, install Gunicorn, and push code via git.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "You must create a requirements.txt file to specify your app's dependencies and a special Heroku file called Procfile... Use the following command to create the requirements.txt file. pip freeze > requirements.txt",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The Flask app is configured to run with Gunicorn for production deployment on Heroku.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Create a file named Procfile and save it in the project's root folder with the following contents: web: gunicorn app:app",
+      "chunk_index": 4,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The command line is a powerful text-only interface used by developers to install and set up Django projects.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "This chapter shows you how to set up your Windows or macOS computer correctly so you can work on Django projects. We start by giving an overview of the Command Line, powerful text-only interface developers use to install and set up Django projects.",
       "chunk_index": 5,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 5,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Django project deployment to production",
+      "content": "Virtual environments allow developers to isolate project dependencies, preventing conflicts between different Django or Python versions.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "One of the most common issues with Django is that a project built in one version may not be compatible with one created in another... creating a virtual environment with its own set of installation folders is essential.",
+      "chunk_index": 5,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django's project structure includes files like settings.py, urls.py, models.py, views.py, and manage.py, which organize the application's components.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "When you create a new Django project, you will find 5 new files: __init__.py, asgi.py, settings.py, urls.py, wsgi.py, and manage.py.",
+      "chunk_index": 5,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django follows the Model-View-Template (MVT) pattern, which manages data, user interface, and URL routing separately.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Django's method, often called Model-View-Template, only loosely follows the traditional MVC method... The interaction involves URL pattern matching, views, models, and templates.",
+      "chunk_index": 5,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The HTTP request/response cycle involves a client sending a request to a URL, Django processing it through URL patterns, views, models, and templates, and then sending back a response.",
       "concept_name": "Main Idea",
       "type": "concept",
-      "source_sentence": "The text discusses the process of deploying a Django project to a production environment, which involves moving the code to an external server and database so that it can be accessed by everyone.\n\n  2. CONCEPT: Gunicorn\n     TYPE: Key Definition\n     SOURCE: Gunicorn is a web server for the Django project that is ready for production. It will replace the lightweight server used for local testing.\n\n  3. CONCEPT: Heroku\n     TYPE: Key Definition\n     SOURCE: Heroku is a hosting service that will be used to deploy the Django project online. It's free for small projects and easy to set up.\n\n  4. CONCEPT: Heroku Command Line Interface (CLI)\n     TYPE: Key Definition\n     SOURCE: The Heroku CLI needs to be installed so that deployment can be done from the command line.\n\n  5. CONCEPT: ALLOWED_HOSTS setting in Django settings.py\n     TYPE: Important Fact\n     SOURCE: The ALLOWED_HOSTS setting in the Django settings.py file tells us which host/domain names our Django site can serve, helping to prevent HTTP Host header attacks.\n\n  6. CONCEPT: Procfile\n     TYPE: Key Definition\n     SOURCE: The Procfile is unique to Heroku and tells you how to run the app in their bundle. It specifies the web function, WSGI configuration file, and logging options.\n\n  7. CONCEPT: runtime.txt file\n     TYPE: Key Definition\n     SOURCE: The runtime.txt file tells Heroku which version of Python to use for the project.\n\n  8. CONCEPT: Static file collection (disabled in Heroku)\n     TYPE: Important Fact\n     SOURCE: In Heroku, static files need to be disabled during deployment because it handles them differently than a local environment.\n\n  9. CONCEPT: gitignore file\n    TYPE: Key Definition\n    SOURCE: The .gitignore file in the project folder is used to keep certain files out of version control, such as the virtual environment folder.\n\n  10. CONCEPT: Don't Repeat Yourself (DRY) principle\n     TYPE: Main Idea\n     SOURCE: In Django coding, there is a rule called Don't Repeat Yourself (DRY), which encourages code cleanliness by avoiding repetition in tests and other areas of the code. However, unit tests work best when they are self-contained and very verbose. As a test suite grows, it might be better for performance to combine multiple assertions into fewer tests. This is an advanced topic that may not always apply in every situation.",
+      "source_sentence": "A network protocol is a set of rules for formatting and processing data... HTTP is a protocol that works with a client-server model of computing.",
+      "chunk_index": 5,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Function called homePageView that takes the request object and sends back the string \"My New App!\" as a response",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "We made a function called homePageView that takes the request object and sends back the string \"My New App!\" as a response.",
       "chunk_index": 6,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Main Idea",
-        "chunk_index": 6,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Creating a new Django project and app",
+      "content": "Two types of views in Django: function-based views (FBVs) and class-based views (CBVs)",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Function-based views (FBVs) and class-based views are the two types of views in Django (CBVs).",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "CBVs make it easier to reuse code, keep things DRY, and allow mixins to add more functionality",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Django started out with only FBVs, but over time it added CBVs, which make it easier to reuse code, keep things DRY (Don't Repeat Yourself), and allow mixins to add more functionality.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django has built-in generic class-based views (GCBVs) to handle common use cases like creating objects, forms, list views, and pagination",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Django has a number of built-in generic class-based views (GCBVs) to handle common use cases like creating a new object, forms, list views, pagination, and so on.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "There are three ways to write a view in Django: FBVs, CBVs, and GCBVs",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Technically, there are three ways to write a view in Django: function-based views (FBVs), class-based views (CBVs), and generic class-based views (GCBVs).",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "In URL configuration, use path() to connect URL patterns to views, e.g., path('', homePageView, name='home')",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "The first six steps in the development course involve creating a new base folder, setting up a new virtual environment, installing Django, starting a new Django project, and starting a new app.\n\n  2. CONCEPT: Database models for blog posts\n     TYPE: Important Fact\n     SOURCE: The Post model in the blog app's models.py file includes fields for title, author (a foreign key), body, and provides methods for string representation and getting an absolute URL.\n\n  3. CONCEPT: Migrating database changes\n     TYPE: Key Definition\n     SOURCE: After creating a new database model, a migration record can be made, and the database can be updated with the `python manage.py migrate` command.\n\n  4. CONCEPT: Superuser account creation\n     TYPE: Important Fact\n     SOURCE: A superuser account is created using the `python manage.py createsuperuser` command to access the data in Django's backend admin.\n\n  5. CONCEPT: URL configuration for blog app\n     TYPE: Key Definition\n     SOURCE: The urls.py file in the django_project folder needs to include the blog app's URL patterns, and a new file named urls.py should be created in the blog app to define its URL patterns.\n\n  6. CONCEPT: Class-based views for blog posts\n     TYPE: Main Idea\n     SOURCE: The views for displaying blog posts will use class-based views, such as ListView, and a few lines of code in the views file are needed to see the results of the Post model.\n\n  7. CONCEPT: Template inheritance for blog app\n     TYPE: Key Definition\n     SOURCE: To keep the code tidy, templates will be created using template inheritance, with a base.html file and an inherited home.html file.\n\n  8. CONCEPT: Directing Django to find templates\n     TYPE: Important Fact\n     SOURCE: The settings.py file needs to be edited to direct Django to the appropriate folder to find our templates.\n\n  9. CONCEPT: Creating a folder for new template files\n     TYPE: Key Definition\n     SOURCE: A folder should be created to store the new template files for the blog app.\n\n  10. CONCEPT: Static file handling in Django\n     TYPE: Main Idea\n     SOURCE: In future chapters, we will learn about styling using CSS and how Django handles static files, which are essential for creating a visually appealing and functional web application.",
+      "source_sentence": "On the first line, we import the path from Django to link our URL; on the second line, we import the views from the same folder. By calling the views.py file .views, we are telling Django to look for a views.py file in the current folder and import the homePageView function from there.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "In the main project urls.py, include app URLs with include() to manage multiple apps",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "path('', include('webpages.urls'))",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "To test the server, run 'python manage.py runserver'",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Restart your server with the following code and reload that url in your browser: python manage.py runserver.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Initialize Git repository with 'git init' and track changes with 'git status'",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "The first step is to add Git to our repository or start it up. Make sure you have Control+c pressed to stop the local server, and then run the command git init.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Create a .gitignore file to exclude virtual environment (.venv) from source control",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "To hack this, use Django to create a new file called .gitignore that tells Git what to ignore. .venv/.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Generate requirements.txt with 'pip freeze > requirements.txt' to record installed packages",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Type the following command line: pip freeze > requirements.txt.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Deploy to Heroku by installing Heroku CLI, creating a new app, and configuring files like Procfile and runtime.txt",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Heroku: make a new app Disable the static file collection (we'll discuss this later). The code was sent to Heroku.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Use Gunicorn as the production web server for Django",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Let us use Pip to install Gunicorn. Type in the following code: python -m pip install gunicorn==20.1.0.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Set 'ALLOWED_HOSTS' in settings.py to include '*' for development purposes",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Go to the ALLOWED HOSTS setting, which tells us which host/domain names our Django site can serve. For now, we'll use the asterisk * as a wildcard so that all domains will work.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Create a Procfile with the command 'web: gunicorn django_project.wsgi --log-file -' for Heroku deployment",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Create a new file, and name it Procfile. The Procfile is unique to Heroku and tells you how to run the app in their bundle.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Specify Python version in runtime.txt (e.g., Python 3.10)",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Create this new runtime.txt file in the same folder as the Procfile and manage.py files. Run python --version to find out what version of Python is being used and copy it into runtime.txt.",
+      "chunk_index": 6,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Heroku create command assigns a random name to the app, such as ⬢ intense-inlet-86193.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "The heroku create command also makes a remote for our app called \"heroku.\" Type git remote -v to see this.",
       "chunk_index": 7,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 7,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Django's built-in authentication system",
+      "content": "Disabling static files collection with heroku config:set DISABLE_COLLECTSTATIC=1 helps prevent issues with static assets in Django deployment.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Heroku will give our app a random name, like ⬢ intense-inlet-86193 in my case...heroku config:set DISABLE_COLLECTSTATIC=1",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The process of deploying involves creating a Heroku app, pushing code with git, and opening the app URL.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Start the Heroku server so the app can be used by people...Type git push heroku main...heroku open",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django models are Python classes that define database structure, such as Post with a text field.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "\"Django already has a robust authentication system built in, which we can modify to meet our needs.\"\n\n  2. CONCEPT: User object\n     TYPE: Key Definition\n     SOURCE: \"We'll use this User object to log in, log out, and sign up on our blog.\"\n\n  3. CONCEPT: LoginView\n     TYPE: Key Definition\n     SOURCE: \"Django's LoginView offers us a ready-made login screen.\"\n\n  4. CONCEPT: Template for login form\n     TYPE: Important Fact\n     SOURCE: \"By default, Django looks for a log in form in a templates directory called registration called login.html.\"\n\n  5. CONCEPT: LOGIN REDIRECT URL setting\n     TYPE: Key Definition\n     SOURCE: \"Just add the following at the end of the settings.py file in django_project: LOGIN_REDIRECT_URL = \"home\"\"\n\n  6. CONCEPT: Django's accounts/ URL\n     TYPE: Important Fact\n     SOURCE: \"This modification involves adding a single line to the text on the second-to-last line: from django.contrib import admin, from django.urls import path, include; urlpatterns = [path(\"admin/\", admin.site.urls), path(\"accounts/\", include(\"django.contrib.auth.urls\")), path(\"\", include(\"blog.urls\"))]\"\n\n  7. CONCEPT: Registration folder and login.html file creation\n     TYPE: Important Fact\n     SOURCE: \"Create a new folder named 'registration' and place the necessary file within it. To end our local server, use Control+c at the command prompt. The next step is to make the new folder.\"\n\n  8. CONCEPT: Default login form location\n     TYPE: Important Fact\n     SOURCE: \"By default, Django looks for a log in form in a templates directory called registration called login.html.\"\n\n  9. CONCEPT: LOGIN_REDIRECT_URL setting\n     TYPE: Key Definition\n     SOURCE: \"Now the user is redirected to our homepage, 'home'. And at this moment, our work is complete. Once you've restarted the Django server with python manage.py runserver, you should be able to see our login page at http://127.0.0.1:8000/accounts/login/.\"\n\n  10. CONCEPT: Default settings for log in form and redirect URL\n     TYPE: Main Idea\n     SOURCE: \"By default, Django looks for a log in form in a templates directory called registration called login.html. Just add the following at the end of the settings.py file in django_project: LOGIN_REDIRECT_URL = \"home\"\"",
+      "source_sentence": "Open the models.py file in the posts folder to view the Django-supplied default code...class Post(models.Model): text = models.TextField()",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Migration commands like makemigrations and migrate synchronize models with the database.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "To begin, we use the makemigrations command to generate a migrations file...then use the migrate command, which runs the commands in our migrations file...",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django's admin interface requires creating a superuser with python manage.py createsuperuser.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Type python manage.py createsuperuser into the command prompt and enter a username, email address, and password...",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Registering models with admin.site.register() makes them visible in the Django admin dashboard.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Open admin.py in the posts folder and insert: from .models import Post; admin.site.register(Post)",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Adding a __str__ method to models improves readability by defining how instances are displayed.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Add a new function with the following code: def __str__(self): return self.text[:50]",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django's ListView class-based view displays lists of objects, such as posts on the homepage.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Copy and paste the following Python code into the posts/views.py file: class HomePageView(ListView): model = Post",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Templates are stored in a 'templates' folder, and the directory must be specified in settings.py.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Create a folder named templates...edit the DIRS in settings.py: \"DIRS\": [BASE_DIR / \"templates\"],",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "URL configuration connects views to URLs, with include() used to delegate URL patterns to app-specific urls.py files.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "In django_project/urls.py: path('', include('posts.urls'))...In posts/urls.py: path('', HomePageView.as_view(), name='home')",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The home.html template uses a for loop to display all posts in post_list.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "<ul> {% for post in post_list %} <li>{{ post.text }}</li> {% endfor %} </ul>",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Testing with Django involves creating subclasses of TestCase, setting up test data, and asserting conditions.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Create a class PostTests(TestCase): @classmethod def setUpTestData(cls): cls.post = Post.objects.create(text='This is a test!')",
+      "chunk_index": 7,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django uses class-based generic views such as ListView, DetailView, CreateView, UpdateView, and DeleteView to implement CRUD operations efficiently.",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "To make things easier, we can utilize the DetailView, which is built on a generic class.",
       "chunk_index": 8,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 8,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
       }
     },
     {
-      "content": "Django's authentication system",
+      "content": "Static files in Django, including CSS, JavaScript, and images, are stored in static folders within each app or project directory, and need to be configured in settings.py.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Django will, by default, search each app for a subfolder called static. Or a folder with the name static in the blog folder.",
+      "chunk_index": 8,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The get_absolute_url method on the Post model provides the URL for individual blog posts, typically accepting a primary key (pk) as an argument.",
       "concept_name": "Key Definition",
       "type": "concept",
-      "source_sentence": "\"Remember that we didn't have to manually develop a database model or implement any view logic because Django's authentication system already did that for us.\"\n\n   CONCEPT: is_authenticated attribute\n     TYPE: Important Fact\n     SOURCE: \"It will do for now to simply make this code easy to find. We can give it a better look later on when we have more time.\"\n\n   CONCEPT: base.html template modification\n     TYPE: Main Idea\n     SOURCE: \"Modify the base.html file by inserting new code behind the </header> tag.\"\n\n   CONCEPT: logout link and page logic\n     TYPE: Key Definition\n     SOURCE: \"We included logout template and page logic, but it is not shown in the text.\"\n\n   CONCEPT: WhiteNoise package\n     TYPE: Important Fact\n     SOURCE: \"To begin, install the newest version with pip: python -m pip install whitenoise==5.3.0\"\n\n   CONCEPT: Heroku deployment\n     TYPE: Main Idea\n     SOURCE: \"Deploy to Heroku by running these commands in this order: git status, git add -A, git commit -m 'Heroku config', git push -u origin main, heroku ps:scale web=1, heroku open.\"\n\n   CONCEPT: PostgreSQL vs SQLite\n     TYPE: Key Definition\n     SOURCE: \"We have been using Django's preconfigured SQLite database on our local machines and in production so far in this book. However, there is a price to pay for it. Because Heroku uses a transient file system, any modifications made to the cloud-based db.sqlite3 file are lost anytime a new deployment or server restart takes place.\"\n\n   CONCEPT: Django for Professionals and Django for APIs books\n     TYPE: Important Fact\n     SOURCE: \"Django for Professionals is a follow-up book I wrote that covers topics like using Docker, installing a production database locally like PostgreSQL, registering advanced users, securing the site, optimizing performance, and much more. When building mobile apps (iOS/Android) or websites with a dedicated JavaScript front-end framework like Vue, React, or Angular, Django is often utilized as the back-end API.\"\n\n   CONCEPT: Django Packages database\n     TYPE: Important Fact\n     SOURCE: \"Django Packages is a complete database of all available third-party apps if you're interested in viewing additional packages.\"",
+      "source_sentence": "Our get absolute url method on our Post model accepts a pk argument in this case since the URL specifies it.",
+      "chunk_index": 8,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django's built-in authentication system includes views like LoginView, which can be integrated into URLs for user login functionality.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Django's LoginView offers us a ready-made login screen.",
+      "chunk_index": 8,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The reverse_lazy function is used in class-based views like DeleteView to delay URL resolution until after the view has completed its operation.",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Because if get absolute url() is present on the model object, Django will utilize it by default. In addition, this attribute is only shown to those that take the time to study and memorize the documentation, namely the sections on model forms and success url. Or the likelihood of an error occurring and subsequent backtracking to resolve this Django-specific behavior is increased. In this case, we use reverse_lazy rather than just reverse to delay the URL redirect's execution until after our view has completed removing the blog article.",
+      "chunk_index": 8,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The URL patterns in urls.py define the routes for different views, such as listing posts, viewing details, creating, editing, and deleting posts.",
+      "concept_name": "Main Idea",
+      "type": "concept",
+      "source_sentence": "Use this line to create a CSS subfolder: mkdir static/css",
+      "chunk_index": 8,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django's authentication system already did that for us",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Remember that we didn't have to manually develop a database model or implement any view logic because Django's authentication system already did that for us.",
       "chunk_index": 9,
       "metadata": {
         "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
         "format": "pdf",
-        "concept_name": "Key Definition",
-        "chunk_index": 9,
-        "extraction_method": "fallback"
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "The is_authenticated attribute can be used to show a message to all visitors",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "The is_authenticated attribute can be used for this purpose.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "UserCreationForm has three fields: username, password1, and password2",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Django supplies us with a form class called UserCreationForm to make this process easier. By default, it has three fields: username, password1, and password2.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "reverse lazy redirects the user to the login page after registration",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "We subclass CreateView in SignUpView... after successful registration, reverse lazy redirects the user to the login page.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "collectstatic command assembles static files into a deployable folder",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Use Django's collectstatic command to assemble all static files into a deployable folder.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "WhiteNoise package is used to serve static files in production",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "We'll be using the WhiteNoise package, which is currently the most popular option.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Heroku uses a transient file system, so database modifications are lost on restart",
+      "concept_name": "Important Fact",
+      "type": "concept",
+      "source_sentence": "Because Heroku uses a transient file system, any modifications made to the cloud-based db.sqlite3 file are lost anytime a new deployment or server restart takes place.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
+      }
+    },
+    {
+      "content": "Django REST Framework allows converting a Django website into an API",
+      "concept_name": "Key Definition",
+      "type": "concept",
+      "source_sentence": "Django REST Framework, a third-party program that is tightly integrated with Django itself, makes it possible to convert any preexisting Django website into an API with no additional coding.",
+      "chunk_index": 9,
+      "metadata": {
+        "filename": "python-flask-and-django-full-stack-python-for-web-development-build-web-applications-in-python-using-flask-and-django-frameworks_compress.pdf",
+        "format": "pdf",
+        "extraction_method": "openai"
       }
     }
   ]
