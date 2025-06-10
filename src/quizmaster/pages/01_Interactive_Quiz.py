@@ -2,6 +2,7 @@ import streamlit as st
 import sys
 import os
 import re
+from datetime import datetime
 
 # Add parent directory to path to enable relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -333,7 +334,35 @@ def show_quiz_page():
             # Otherwise, display as regular text
             st.write(insights)
         
+        # Display selected concepts if available
+        if 'selected_concepts' in quiz_data and quiz_data['selected_concepts']:
+            st.divider()
+            st.header("🎯 Concepts Tested")
+            st.write("This quiz was focused on the following concepts:")
+            for concept in quiz_data['selected_concepts']:
+                st.markdown(f"• {concept}")
+        
         st.divider()
+        
+        # Save quiz section
+        with st.expander("💾 Save This Quiz"):
+            quiz_title = st.text_input("Quiz Title", 
+                                     value=f"{quiz_data['model_used']} Quiz - {datetime.now().strftime('%Y-%m-%d')}")
+            quiz_description = st.text_area("Description (optional)")
+            tags = st.text_input("Tags (comma separated, optional)")
+            
+            if st.button("💾 Save Quiz", type="primary"):
+                if not quiz_title.strip():
+                    st.error("Please enter a title for the quiz")
+                else:
+                    tags_list = [t.strip() for t in tags.split(",")] if tags else []
+                    quiz_id = db.save_quiz(
+                        title=quiz_title,
+                        quiz_data=quiz_data,
+                        description=quiz_description,
+                        tags=tags_list
+                    )
+                    st.success(f"Quiz saved successfully! (ID: {quiz_id})")
         
         if st.button("🔄 Take Quiz Again"):
             st.session_state.current_question = 0
@@ -342,9 +371,10 @@ def show_quiz_page():
             st.rerun()
         
         if st.button("🏠 Back to Setup"):
-            # Potentially clear quiz_data if desired, or keep it
-            # st.session_state.quiz_data = None 
             st.switch_page("streamlit_app.py")
+            
+        if st.button("📚 View Saved Quizzes"):
+            st.switch_page("pages/02_Saved_Quizzes.py")
 
 
 if __name__ == "__main__":

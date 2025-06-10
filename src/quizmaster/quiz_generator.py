@@ -116,7 +116,7 @@ class QuizGenerator:
             "llama3.1:8b"         # Meta's Llama 3.1 (may have JSON formatting issues)
         ]
         self.available_models = self.openai_models + self.ollama_models
-        self.current_model = "gpt-4.1-nano"  # Default to OpenAI model
+        self.current_model = "mistral:7b"  # Default to local model
         self._question_cache = {}
         
     def set_model(self, model_name: str, auto_pull: bool = True) -> bool:
@@ -463,14 +463,36 @@ class QuizGenerator:
             'used': False
         })
         
-        # Add ContextGem extracted concepts
+        # Add ContextGem extracted concepts with robust error handling
         for concept in extracted_concepts:
-            context_data.append({
-                'content': concept['content'],
-                'type': concept['concept_name'],
-                'source': concept.get('source_sentence', ''),
-                'used': False
-            })
+            try:
+                # Handle different concept formats
+                if isinstance(concept, dict):
+                    # Standard dictionary format
+                    content = concept.get('content', '')
+                    concept_name = concept.get('concept_name', 'General')
+                    source = concept.get('source_sentence', '')
+                elif isinstance(concept, str):
+                    # String format - use the string as content
+                    content = concept
+                    concept_name = 'Extracted Concept'
+                    source = ''
+                else:
+                    # Unknown format - skip
+                    logger.warning(f"Skipping unknown concept format: {type(concept)}")
+                    continue
+                
+                # Only add if we have meaningful content
+                if content and content.strip():
+                    context_data.append({
+                        'content': content,
+                        'type': concept_name,
+                        'source': source,
+                        'used': False
+                    })
+            except Exception as e:
+                logger.warning(f"Error processing concept: {str(e)}")
+                continue
 
         questions = []
         generated_count = 0
@@ -850,6 +872,30 @@ Format response as valid JSON:
         except Exception as e:
             logger.error(f"Error getting local models: {str(e)}")
             return []
+
+    def pull_model(self, model_name: str) -> bool:
+        """Pull a model from Ollama registry."""
+        try:
+            logger.info(f"Pulling model {model_name} from Ollama...")
+            
+            # Use requests to pull the model
+            response = requests.post(
+                f"{self.config.ollama_base_url}/api/pull",
+                json={"name": model_name},
+                timeout=self.config.pull_timeout,
+                stream=True
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully pulled model {model_name}")
+                return True
+            else:
+                logger.error(f"Failed to pull model {model_name}: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error pulling model {model_name}: {str(e)}")
+            return False
 
     # Additional unchanged methods...
     

@@ -2,8 +2,11 @@ import streamlit as st
 from document_processor import DocumentProcessor
 from quiz_generator import QuizGenerator
 from database_manager import DatabaseManager
+from vector_manager import VectorManager
 import os
 import time
+import re
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -29,6 +32,10 @@ def main():
     # Always re-initialize QuizGenerator to pick up code changes
     st.session_state.quiz_generator = QuizGenerator()
     
+    # Initialize VectorManager for pgvector operations
+    if 'vector_manager' not in st.session_state:
+        st.session_state.vector_manager = VectorManager()
+    
     if 'processed_content' not in st.session_state:
         st.session_state.processed_content = None
     
@@ -51,9 +58,9 @@ def main():
         MODEL_DESCRIPTIONS = {
             "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Lightweight but powerful model optimized for efficiency",
             "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Specialized for structured output and JSON generation",
-            # Include local models as fallback
             "llama3.3:8b": "Meta's Llama 3.3: 8B parameters (fallback)",
-            "mistral:7b": "Mistral-7B - Efficient but not recommended for embedding"
+            "mistral:7b": "Mistral-7B - Efficient but not recommended for embedding",
+            "deepseek-coder:6.7b": "DeepSeek Coder 6.7B - Specialized for code understanding and embedding"
         }
 
         # Get current embedding model
@@ -62,11 +69,15 @@ def main():
         # Enhanced embedding model selection with status indicators
         embedding_model_options = []
         
-        # Only add OpenAI models for embedding
-        for model in ["gpt-4.1-nano", "gpt-4o-mini"]:
-            status = "⚡ API"
-            if not os.environ.get("OPENAI_API_KEY"):
-                status += " (key missing)"
+        # Add both OpenAI and local models for embedding
+        for model in MODEL_DESCRIPTIONS.keys():
+            if model.startswith('gpt-'):
+                status = "⚡ API"
+                if not os.environ.get("OPENAI_API_KEY"):
+                    status += " (key missing)"
+            else:
+                status = "🖥️ Local"
+                
             embedding_model_options.append({
                 "name": model,
                 "display": f"{model} - {status}",
@@ -91,6 +102,9 @@ def main():
                 st.error("OpenAI API key not found in .env file")
             else:
                 st.session_state.document_processor.set_model(embedding_model)
+                # Also update vector manager to use the same model for consistency
+                if hasattr(st.session_state.vector_manager, 'current_model'):
+                    st.session_state.vector_manager.current_model = embedding_model
                 st.success(f"Embedding model set to {embedding_model}")
         
         st.divider()
@@ -146,6 +160,13 @@ def main():
         # Show model description
         st.caption(selected_option["description"])
         
+        # Add synchronization option
+        sync_models = st.checkbox(
+            "🔄 Use same model for document processing", 
+            value=True,
+            help="When enabled, both concept extraction and quiz generation will use the same model"
+        )
+        
         # Check if current model is an OpenAI or Ollama model
         is_openai_model = quiz_model in st.session_state.quiz_generator.openai_models
         
@@ -159,7 +180,19 @@ def main():
                     with st.spinner(f"Setting up quiz model {quiz_model}..."):
                         try:
                             st.session_state.quiz_generator.set_model(quiz_model)
-                            st.success(f"Quiz model set to {quiz_model}")
+                            # Sync document processor if enabled
+                            if sync_models:
+                                try:
+                                    st.session_state.document_processor.set_model(quiz_model)
+                                    if hasattr(st.session_state.vector_manager, 'current_model'):
+                                        st.session_state.vector_manager.current_model = quiz_model
+                                    st.success(f"✅ Both quiz generation and document processing set to {quiz_model}")
+                                    st.info(f"🔄 All future document processing will use {quiz_model}")
+                                except Exception as e:
+                                    st.warning(f"Quiz model set, but couldn't sync document processor: {str(e)}")
+                                    st.success(f"Quiz model set to {quiz_model}")
+                            else:
+                                st.success(f"Quiz model set to {quiz_model}")
                         except Exception as e:
                             st.error(f"Error setting quiz model: {str(e)}")
         else:
@@ -183,7 +216,19 @@ def main():
                                         st.stop()
                             
                             st.session_state.quiz_generator.set_model(quiz_model)
-                            st.success(f"Quiz model set to {quiz_model}")
+                            # Sync document processor if enabled
+                            if sync_models:
+                                try:
+                                    st.session_state.document_processor.set_model(quiz_model)
+                                    if hasattr(st.session_state.vector_manager, 'current_model'):
+                                        st.session_state.vector_manager.current_model = quiz_model
+                                    st.success(f"✅ Both quiz generation and document processing set to {quiz_model}")
+                                    st.info(f"🔄 All future document processing will use {quiz_model}")
+                                except Exception as e:
+                                    st.warning(f"Quiz model set, but couldn't sync document processor: {str(e)}")
+                                    st.success(f"Quiz model set to {quiz_model}")
+                            else:
+                                st.success(f"Quiz model set to {quiz_model}")
                         except Exception as e:
                             st.error(f"Error setting quiz model: {str(e)}")
             
@@ -219,9 +264,6 @@ def main():
             help="Enter keywords to focus on specific sections"
         )
         
-        # Removed unused "Enable Concept Extraction" checkbox
-        # Concept extraction is always enabled in the DocumentProcessor
-        
         # Document Info
         if st.session_state.processed_content:
             st.subheader("📄 Document Info")
@@ -255,19 +297,20 @@ def main():
                     progress_bar.progress(25); time.sleep(0.1)
                     processed_content = st.session_state.document_processor.process(
                         uploaded_file.read(),
-                        uploaded_file.name
+                        "direct_input",  # source indicates it's direct input, not a file path
+                        custom_filename=uploaded_file.name  # pass the actual filename here
                     )
                     progress_bar.progress(75); time.sleep(0.1)
                     st.session_state.processed_content = processed_content
                     progress_bar.progress(100)
                     
-                    # Store the processed document as JSON file
+                    # Store the processed document with embeddings in pgvector
                     try:
-                        doc_id = st.session_state.document_processor.store_document(processed_content)
-                        st.success(f"✅ Document processed and stored successfully! ID: {doc_id[:8]}...")
+                        doc_id = st.session_state.vector_manager.store_document(processed_content)
+                        st.success(f"✅ Document processed and stored with embeddings! ID: {doc_id[:8]}...")
                     except Exception as e:
-                        st.error(f"❌ Error storing document: {str(e)}")
-                        st.success("✅ Document processed successfully!")
+                        st.error(f"❌ Error storing document with embeddings: {str(e)}")
+                        st.success("✅ Document processed successfully (without embeddings)!")
             except Exception as e:
                 st.error(f"❌ Error processing document: {str(e)}")
                 st.info("💡 Make sure the document is not corrupted and is in a supported format.")
@@ -275,9 +318,9 @@ def main():
     # Document Management Section
     st.header("🗃️ Document Management")
     
-    # List stored documents
+    # List stored documents from pgvector
     try:
-        stored_docs = st.session_state.document_processor.list_documents()
+        stored_docs = st.session_state.vector_manager.list_documents()
         if stored_docs:
             st.subheader("Stored Documents")
             
@@ -285,15 +328,57 @@ def main():
             if 'selected_docs' not in st.session_state:
                 st.session_state.selected_docs = {}
             
-            # Display documents with checkboxes
+            # Display documents with checkboxes and topic information
             for doc in stored_docs:
                 doc_key = f"doc_{doc['id']}"
-                is_selected = st.checkbox(
-                    f"{doc['filename']} (ID: {doc['id']})",
-                    value=st.session_state.selected_docs.get(doc_key, False),
-                    key=doc_key
-                )
-                st.session_state.selected_docs[doc_key] = is_selected
+                
+                # Display document with extracted info
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    is_selected = st.checkbox(
+                        f"📄 {doc['filename']}",
+                        value=st.session_state.selected_docs.get(doc_key, False),
+                        key=doc_key
+                    )
+                    st.session_state.selected_docs[doc_key] = is_selected
+                    
+                    # Show document details
+                    with st.expander(f"📋 Details for {doc['filename']}", expanded=False):
+                        st.write(f"**Document ID:** {doc['id'][:12]}...")
+                        st.write(f"**Format:** {doc['format'].upper()}")
+                        st.write(f"**Created:** {doc['created_at'][:16] if doc['created_at'] else 'Unknown'}")
+                        
+                        # Show extraction summary
+                        if 'extracted_summary' in doc:
+                            summary = doc['extracted_summary']
+                            st.write(f"**Main Topic:** {summary.get('main_topic', 'Not processed yet')}")
+                            st.write(f"**Document Type:** {summary.get('document_type', 'Unknown')}")
+                            st.write(f"**Concepts Extracted:** {summary.get('concept_count', 0)}")
+                            st.write(f"**Status:** {summary.get('extraction_status', 'unknown').title()}")
+                        else:
+                            st.write("**Status:** No extraction data available")
+                
+                with col2:
+                    # Show status indicator with better logic
+                    if 'extracted_summary' in doc:
+                        status = doc['extracted_summary'].get('extraction_status', 'unknown')
+                        concept_count = doc['extracted_summary'].get('concept_count', 0)
+                        main_topic = doc['extracted_summary'].get('main_topic', 'Unknown')
+                        
+                        # More robust status determination
+                        if status == 'completed' and concept_count > 0 and main_topic not in ['Processing...', 'Not processed yet', 'Unknown']:
+                            st.success("✅ Ready")
+                        elif status == 'failed' or main_topic in ['Processing failed', 'No content available']:
+                            st.error("❌ Failed")
+                        elif status == 'pending' or main_topic in ['Processing...', 'Not processed yet']:
+                            st.warning("⏳ Processing")
+                        elif concept_count > 0:
+                            st.success("✅ Ready")  # Force ready if we have concepts
+                        else:
+                            st.info("🔄 Needs processing")
+                    else:
+                        st.info("🔄 Needs processing")
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -313,7 +398,7 @@ def main():
                             combined_metadata = {'chapters': [], 'sections': [], 'total_words': 0, 'total_paragraphs': 0}
                             
                             for doc_id in selected_ids:
-                                doc_data = st.session_state.document_processor.get_document(doc_id)
+                                doc_data = st.session_state.vector_manager.get_document(doc_id)
                                 if doc_data:
                                     # Reconstruct processed_content for display purposes
                                     combined_content += doc_data['content'] + "\n\n"
@@ -354,11 +439,20 @@ def main():
                     else:
                         try:
                             for doc_id in selected_ids:
-                                if st.session_state.document_processor.delete_document(doc_id):
+                                if st.session_state.vector_manager.delete_document(doc_id):
                                     # Remove from selected state
                                     doc_key = f"doc_{doc_id}"
                                     if doc_key in st.session_state.selected_docs:
                                         del st.session_state.selected_docs[doc_key]
+                            
+                            # Clear processed_content if the selected documents were loaded
+                            if st.session_state.processed_content:
+                                # Check if the current processed document is one of the deleted ones
+                                if "filename" in st.session_state.processed_content:
+                                    if st.session_state.processed_content["filename"] == f"{len(selected_ids)} selected documents":
+                                        st.session_state.processed_content = None
+                                        if 'selected_concepts' in st.session_state:
+                                            st.session_state.selected_concepts = []
                             
                             st.success(f"Deleted {len(selected_ids)} documents")
                             st.rerun()
@@ -381,11 +475,153 @@ def main():
         with st.expander("📊 Document Summary", expanded=True):
             summary = st.session_state.document_processor.get_content_summary(st.session_state.processed_content)
             st.text(summary)
+        
+        # Display extracted concepts for selection - check both ContextGem and document processor concepts
+        has_contextgem_concepts = 'extracted_concepts' in st.session_state.processed_content and st.session_state.processed_content['extracted_concepts']
+        has_processor_concepts = 'concepts' in st.session_state.processed_content and st.session_state.processed_content['concepts']
+        
+        if has_contextgem_concepts or has_processor_concepts:
+            with st.expander("🎯 Select Topics for Quiz", expanded=True):
+                st.markdown("**Select the concepts you want to focus on for quiz generation:**")
+                
+                # Initialize selected concepts in session state
+                if 'selected_concepts' not in st.session_state:
+                    st.session_state.selected_concepts = []
+                
+                # Combine concepts from both sources
+                concept_groups = {}
+                
+                # Add ContextGem concepts if available
+                if has_contextgem_concepts:
+                    extracted_concepts = st.session_state.processed_content['extracted_concepts']
+                    if isinstance(extracted_concepts, dict):
+                        for concept_name, concept_data in extracted_concepts.items():
+                            if isinstance(concept_data, dict) and 'items' in concept_data:
+                                concept_groups[concept_name] = [item.get('value', '') for item in concept_data['items'] if item.get('value')]
+                    elif isinstance(extracted_concepts, list):
+                        # Handle case where extracted_concepts is a list of concept objects
+                        for i, concept in enumerate(extracted_concepts):
+                            if isinstance(concept, dict):
+                                concept_name = concept.get('concept_name', f'Concept {i+1}')
+                                concept_content = concept.get('content', '')
+                                if concept_content and concept_content.strip():
+                                    if concept_name not in concept_groups:
+                                        concept_groups[concept_name] = []
+                                    concept_groups[concept_name].append(concept_content)
+                
+                # Add document processor concepts if available
+                if has_processor_concepts:
+                    processor_concepts = st.session_state.processed_content['concepts']
+                    for concept in processor_concepts:
+                        concept_type = concept.get('concept_name', 'Extracted Concepts')
+                        concept_content = concept.get('content', '')
+                        
+                        if concept_content and concept_content.strip():
+                            if concept_type not in concept_groups:
+                                concept_groups[concept_type] = []
+                            concept_groups[concept_type].append(concept_content)
+                
+                # Display concept selection in columns
+                if concept_groups:
+                    # Select All / Deselect All buttons
+                    col1, col2, col3 = st.columns([1, 1, 4])
+                    with col1:
+                        if st.button("Select All", key="select_all_concepts"):
+                            all_concepts = []
+                            for concepts_list in concept_groups.values():
+                                all_concepts.extend(concepts_list)
+                            st.session_state.selected_concepts = list(set(all_concepts))
+                            st.rerun()
+                    with col2:
+                        if st.button("Deselect All", key="deselect_all_concepts"):
+                            st.session_state.selected_concepts = []
+                            st.rerun()
+                    
+                    st.markdown("---")
+                    
+                    # Display concepts by category
+                    for concept_type, concepts_list in concept_groups.items():
+                        if concepts_list:
+                            st.markdown(f"**{concept_type}:**")
+                            
+                            # Create checkboxes for each concept - single column for better readability
+                            for i, concept in enumerate(concepts_list):
+                                if concept.strip():  # Only show non-empty concepts
+                                    is_selected = concept in st.session_state.selected_concepts
+                                    # Show full concept text without truncation
+                                    if st.checkbox(concept, value=is_selected, key=f"concept_{concept_type}_{i}_{concept[:20]}"):
+                                        if concept not in st.session_state.selected_concepts:
+                                            st.session_state.selected_concepts.append(concept)
+                                    else:
+                                        if concept in st.session_state.selected_concepts:
+                                            st.session_state.selected_concepts.remove(concept)
+                            
+                            st.markdown("")  # Add spacing
+                    
+                    # Show selected concepts summary
+                    if st.session_state.selected_concepts:
+                        st.success(f"✅ Selected {len(st.session_state.selected_concepts)} concepts for quiz focus")
+                        # Replace nested expander with a container to avoid the nesting error
+                        concepts_container = st.container()
+                        with concepts_container:
+                            st.markdown("**📝 Selected Concepts:**")
+                            for concept in st.session_state.selected_concepts:
+                                st.write(f"• {concept}")
+                    else:
+                        st.info("💡 No concepts selected - quiz will cover all topics")
+                else:
+                    st.info("No specific concepts extracted from this document")
+                    
+                    # Add manual concept extraction button
+                    if st.button("🔄 Extract Topics Manually", type="secondary"):
+                        try:
+                            with st.spinner("Extracting topics from document..."):
+                                # Get content from processed_content
+                                content = st.session_state.processed_content['content']
+                                filename = st.session_state.processed_content['filename']
+                                
+                                # Try to extract concepts using document processor
+                                concepts = st.session_state.document_processor.extract_concepts_with_direct_llm(
+                                    content, filename, st.session_state.processed_content['format']
+                                )
+                                
+                                if concepts:
+                                    # Add concepts to processed_content
+                                    st.session_state.processed_content['concepts'] = concepts
+                                    st.success(f"✅ Successfully extracted {len(concepts)} concepts!")
+                                    st.rerun()
+                                else:
+                                    st.warning("No concepts could be extracted. Try checking your OpenAI API key or model configuration.")
+                        except Exception as e:
+                            st.error(f"Error extracting concepts: {str(e)}")
+                            st.info("💡 Make sure your OpenAI API key is configured and the model is available.")
+        else:
+            st.info("💡 Upload a document to see extracted topics for quiz focus")
             
         with st.expander("👀 Content Preview"):
             content_preview_text = st.session_state.processed_content['content']
-            display_preview = content_preview_text[:500] + "..." if len(content_preview_text) > 500 else content_preview_text
-            st.text_area("First 500 characters:", display_preview, height=150)
+            
+            # Check if content looks like binary PDF data
+            is_binary_pdf = False
+            if content_preview_text.startswith("%PDF-") and re.search(r'stream|endobj|xref|startxref', content_preview_text[:1000]):
+                is_binary_pdf = True
+            
+            if is_binary_pdf:
+                st.warning("⚠️ This PDF appears to contain primarily binary data or images rather than extractable text.")
+                st.info("The system will attempt to extract concepts based on any available text content. If you need better results, try uploading a text-based PDF.")
+                
+                # Try to find any actual text in the document
+                text_parts = re.findall(r'[A-Za-z]{3,}[\s.,;:!?][A-Za-z\s.,;:!?]{20,}', content_preview_text)
+                if text_parts:
+                    st.subheader("Extracted Text Fragments:")
+                    extracted_text = " ".join(text_parts[:5])  # Show first 5 text fragments
+                    st.text_area("Extracted text samples:", extracted_text[:500], height=100)
+                else:
+                    st.error("No meaningful text could be extracted from this PDF. Consider trying a different document.")
+            else:
+                # Normal text preview
+                display_preview = content_preview_text[:500] + "..." if len(content_preview_text) > 500 else content_preview_text
+                st.text_area("First 500 characters:", display_preview, height=150)
 
     st.divider()
 
@@ -410,19 +646,31 @@ def main():
                         
                         gen_progress_bar.progress(10)
                         
-                        # Ensure selected model is applied
-                        current_model = st.session_state.quiz_generator.get_current_model()
+                        # Ensure selected model is applied to ALL components
+                        current_quiz_model = st.session_state.quiz_generator.get_current_model()
+                        current_doc_model = st.session_state.document_processor.get_current_model()
                         selected_model = quiz_model  # From sidebar selectbox
                         
-                        # If selected model doesn't match current model, apply it automatically
-                        if current_model != selected_model:
-                            st.info(f"Applying selected model: {selected_model}")
+                        # Apply selected model to both quiz generator and document processor
+                        if current_quiz_model != selected_model:
+                            st.info(f"Applying selected model {selected_model} to quiz generation...")
                             try:
                                 st.session_state.quiz_generator.set_model(selected_model)
-                                current_model = selected_model
                             except Exception as e:
-                                st.error(f"Error setting model: {str(e)}")
+                                st.error(f"Error setting quiz model: {str(e)}")
                                 st.stop()
+                        
+                        if current_doc_model != selected_model:
+                            st.info(f"Applying selected model {selected_model} to concept extraction...")
+                            try:
+                                st.session_state.document_processor.set_model(selected_model)
+                                # Also sync vector manager
+                                if hasattr(st.session_state.vector_manager, 'current_model'):
+                                    st.session_state.vector_manager.current_model = selected_model
+                            except Exception as e:
+                                st.warning(f"Could not set document processor model: {str(e)}")
+                        
+                        current_model = selected_model
                         
                         # Check connection based on model type
                         is_openai_model = current_model in st.session_state.quiz_generator.openai_models
@@ -439,12 +687,26 @@ def main():
                                 st.stop()
                         
                         gen_progress_bar.progress(30)
+                        
+                        # Prepare focus parameters - combine focus_section with selected concepts
+                        focus_topics = []
+                        if focus_section:
+                            focus_topics.append(focus_section)
+                        
+                        # Add selected concepts if any
+                        if hasattr(st.session_state, 'selected_concepts') and st.session_state.selected_concepts:
+                            focus_topics.extend(st.session_state.selected_concepts)
+                            st.info(f"🎯 Focusing quiz on {len(st.session_state.selected_concepts)} selected concepts")
+                        
+                        # Convert to focus string for the quiz generator
+                        combined_focus = "; ".join(focus_topics) if focus_topics else None
+                        
                         quiz_data = st.session_state.quiz_generator.generate(
                             st.session_state.processed_content,
                             question_types, # from sidebar
                             num_questions,  # from sidebar
                             difficulty,     # from sidebar
-                            focus_section if focus_section else None # from sidebar
+                            combined_focus # combined focus section and selected concepts
                         )
                         gen_progress_bar.progress(90); time.sleep(0.1)
                         gen_progress_bar.progress(100)
@@ -460,32 +722,104 @@ def main():
                     if len(quiz_data['questions']) > 0:
                         st.success(f"✅ Generated {len(quiz_data['questions'])} questions!")
                         
-                        # Option to save the quiz
-                        with st.expander("💾 Save Quiz for Later Use", expanded=True):
-                            quiz_title = st.text_input("Quiz Title", value=f"Quiz on {uploaded_file.name if uploaded_file else 'Selected Documents'}")
-                            quiz_description = st.text_area("Quiz Description (optional)", value=f"A {difficulty} difficulty quiz with {num_questions} questions")
-                            quiz_tags = st.text_input("Tags (comma-separated, optional)", value=f"{difficulty},quiz")
+                        # Automatically save the quiz with default metadata
+                        try:
+                            db = DatabaseManager()
+                            default_title = f"{uploaded_file.name if uploaded_file else 'Generated'} Quiz - {time.strftime('%Y-%m-%d %H:%M')}"
+                            default_description = f"A {difficulty} difficulty quiz with {num_questions} {', '.join(question_types)} questions"
+                            default_tags = [difficulty.lower()] + [qt.lower().replace('-', '') for qt in question_types]
                             
-                            if st.button("Save Quiz to Database", type="primary"):
+                            # Always store extracted topics and concepts in the quiz_data
+                            quiz_data['extracted_topics'] = {
+                                'selected_concepts': st.session_state.get('selected_concepts', []),
+                                'focus_section': focus_section if focus_section else None,
+                                'concept_count': len(st.session_state.get('selected_concepts', [])),
+                                'extraction_method': 'user_selected'
+                            }
+                            
+                            # Also store document metadata for reference
+                            if st.session_state.processed_content:
+                                quiz_data['document_info'] = {
+                                    'filename': st.session_state.processed_content.get('filename', 'Unknown'),
+                                    'format': st.session_state.processed_content.get('format', 'Unknown'),
+                                    'total_words': st.session_state.processed_content.get('metadata', {}).get('total_words', 0),
+                                    'total_paragraphs': st.session_state.processed_content.get('metadata', {}).get('total_paragraphs', 0)
+                                }
+                                
+                                # Store all available concepts (not just selected ones)
+                                all_concepts = []
+                                if 'extracted_concepts' in st.session_state.processed_content:
+                                    extracted_concepts = st.session_state.processed_content['extracted_concepts']
+                                    if isinstance(extracted_concepts, dict):
+                                        for concept_name, concept_data in extracted_concepts.items():
+                                            if isinstance(concept_data, dict) and 'items' in concept_data:
+                                                for item in concept_data['items']:
+                                                    if isinstance(item, dict) and item.get('value'):
+                                                        all_concepts.append({
+                                                            'category': concept_name,
+                                                            'content': item['value'],
+                                                            'source': 'contextgem'
+                                                        })
+                                    elif isinstance(extracted_concepts, list):
+                                        for concept in extracted_concepts:
+                                            if isinstance(concept, dict) and concept.get('content'):
+                                                all_concepts.append({
+                                                    'category': concept.get('concept_name', 'General'),
+                                                    'content': concept['content'],
+                                                    'source': 'contextgem'
+                                                })
+                                
+                                if 'concepts' in st.session_state.processed_content:
+                                    for concept in st.session_state.processed_content['concepts']:
+                                        if isinstance(concept, dict) and concept.get('content'):
+                                            all_concepts.append({
+                                                'category': concept.get('concept_name', 'General'),
+                                                'content': concept['content'],
+                                                'source': 'document_processor'
+                                            })
+                                
+                                quiz_data['extracted_topics']['all_available_concepts'] = all_concepts
+                            
+                            quiz_id = db.save_quiz(
+                                title=default_title,
+                                quiz_data=quiz_data,
+                                description=default_description,
+                                tags=default_tags
+                            )
+                            
+                            if quiz_id:
+                                st.success(f"✅ Quiz automatically saved with ID: {quiz_id}")
+                        except Exception as e:
+                            st.error(f"Error automatically saving quiz: {str(e)}")
+                        
+                        # Option to save custom version
+                        with st.expander("💾 Save Custom Version", expanded=False):
+                            quiz_title = st.text_input("Custom Title", value=default_title)
+                            quiz_description = st.text_area("Custom Description", value=default_description)
+                            quiz_tags = st.text_input("Custom Tags (comma-separated)", value=', '.join(default_tags))
+                            
+                            if st.button("Save Custom Version", type="primary"):
                                 try:
-                                    # Process tags
-                                    tags_list = [tag.strip() for tag in quiz_tags.split(',')] if quiz_tags else []
+                                    tags_list = [tag.strip() for tag in quiz_tags.split(',')] if quiz_tags else default_tags
                                     
-                                    # Save to database
-                                    db = DatabaseManager()
-                                    quiz_id = db.save_quiz(
+                                    # Make sure selected concepts are stored in the quiz_data for custom save as well
+                                    if hasattr(st.session_state, 'selected_concepts') and st.session_state.selected_concepts:
+                                        if 'selected_concepts' not in quiz_data:
+                                            quiz_data['selected_concepts'] = st.session_state.selected_concepts
+                                    
+                                    custom_quiz_id = db.save_quiz(
                                         title=quiz_title,
                                         quiz_data=quiz_data,
                                         description=quiz_description,
                                         tags=tags_list
                                     )
                                     
-                                    if quiz_id:
-                                        st.success(f"✅ Quiz saved successfully with ID: {quiz_id}")
+                                    if custom_quiz_id:
+                                        st.success(f"✅ Custom version saved with ID: {custom_quiz_id}")
                                     else:
-                                        st.error("Failed to save quiz")
+                                        st.error("Failed to save custom version")
                                 except Exception as e:
-                                    st.error(f"Error saving quiz: {str(e)}")
+                                    st.error(f"Error saving custom version: {str(e)}")
                         
                         # Create a more prominent button for the quiz page
                         st.markdown("### Ready to take the quiz?")

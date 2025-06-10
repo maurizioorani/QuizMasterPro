@@ -171,16 +171,21 @@ class DatabaseManager:
         """
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO saved_quizzes (title, description, quiz_data, tags)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id
-                ''', (
-                    title,
-                    description,
-                    json.dumps(quiz_data),
-                    tags if tags else []
-                ))
+                # Force serialization to JSON string
+                try:
+                    serialized_data = json.dumps(quiz_data)
+                    cursor.execute('''
+                        INSERT INTO saved_quizzes (title, description, quiz_data, tags)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id
+                    ''', (
+                        title,
+                        description,
+                        serialized_data,
+                        tags if tags else []
+                    ))
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"Failed to serialize quiz data: {str(e)}")
                 quiz_id = cursor.fetchone()[0]
                 conn.commit()
                 return quiz_id
@@ -205,14 +210,27 @@ class DatabaseManager:
                 result = cursor.fetchone()
                 
                 if result:
-                    return {
-                        'id': result[0],
-                        'title': result[1],
-                        'description': result[2],
-                        'quiz_data': json.loads(result[3]),
-                        'created_at': result[4],
-                        'tags': result[5]
-                    }
+                    quiz_data = result[3]
+                    # Always deserialize from JSON string
+                    try:
+                        if isinstance(quiz_data, str):
+                            quiz_data = json.loads(quiz_data)
+                        elif isinstance(quiz_data, dict):
+                            # If already a dict, serialize and deserialize to ensure consistency
+                            quiz_data = json.loads(json.dumps(quiz_data))
+                        else:
+                            raise ValueError("Unexpected quiz_data type")
+                            
+                        return {
+                            'id': result[0],
+                            'title': result[1],
+                            'description': result[2],
+                            'quiz_data': quiz_data,
+                            'created_at': result[4],
+                            'tags': result[5]
+                        }
+                    except (TypeError, ValueError, json.JSONDecodeError) as e:
+                        raise ValueError(f"Failed to deserialize quiz data: {str(e)}")
                 return None
     
     def list_saved_quizzes(self):

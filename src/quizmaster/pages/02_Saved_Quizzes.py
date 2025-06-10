@@ -60,6 +60,26 @@ def show_saved_quizzes_page():
         with col1:
             st.write(quiz['id'])
         with col2:
+            # Add an expander to show more details including concepts
+            with st.expander(f"{quiz['title']}"):
+                # Get full quiz data to check for concepts
+                full_quiz = db.get_saved_quiz(quiz['id'])
+                if full_quiz and 'quiz_data' in full_quiz:
+                    quiz_data = full_quiz['quiz_data']
+                    
+                    # Show basic quiz info
+                    st.write(f"**Questions:** {len(quiz_data.get('questions', []))}")
+                    st.write(f"**Model Used:** {quiz_data.get('model_used', 'Unknown')}")
+                    
+                    # Show selected concepts if available
+                    if 'selected_concepts' in quiz_data and quiz_data['selected_concepts']:
+                        st.write("**Focused Concepts:**")
+                        for concept in quiz_data['selected_concepts']:
+                            st.markdown(f"• {concept}")
+                else:
+                    st.write("*Detailed quiz data not available*")
+            
+            # Regular quiz title outside the expander
             st.write(quiz['title'])
         with col3:
             st.write(quiz['description'] if quiz['description'] else "")
