@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import re
 
 # Add parent directory to path to enable relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -220,21 +221,69 @@ def show_quiz_page():
                     correct_letter_val = q_data['answer']
                     user_choice_text = user_ans_val
                     actual_correct_text = ""
+                    
+                    # Debug logging
+                    print(f"Question {i}: Checking Multiple Choice answer")
+                    print(f"User answer: '{user_choice_text}'")
+                    print(f"Correct letter: '{correct_letter_val}'")
+                    
                     for opt_val in q_data['options']:
                         if opt_val['letter'] == correct_letter_val:
                             actual_correct_text = opt_val['text']
+                            print(f"Correct text: '{actual_correct_text}'")
                             break
-                    if user_choice_text == actual_correct_text:
+                    
+                    # More flexible comparison - strip whitespace and ignore case
+                    if user_choice_text and actual_correct_text and user_choice_text.strip().lower() == actual_correct_text.strip().lower():
                         is_q_correct = True
                         correct_answers += 1
+                        print(f"Question {i}: CORRECT")
+                    else:
+                        print(f"Question {i}: INCORRECT")
                 elif q_data['type'] == "True/False":
-                    if str(user_ans_val).lower() == str(q_correct_answer).lower():
+                    # Debug logging
+                    print(f"Question {i}: Checking True/False answer")
+                    print(f"User answer: '{user_ans_val}'")
+                    print(f"Correct answer: '{q_correct_answer}'")
+                    
+                    # More flexible comparison
+                    user_answer_normalized = str(user_ans_val).strip().lower()
+                    correct_answer_normalized = str(q_correct_answer).strip().lower()
+                    
+                    # Handle various forms of true/false answers
+                    if user_answer_normalized in ['true', 't', 'yes', 'y', '1'] and correct_answer_normalized in ['true', 't', 'yes', 'y', '1']:
                         is_q_correct = True
                         correct_answers += 1
+                        print(f"Question {i}: CORRECT")
+                    elif user_answer_normalized in ['false', 'f', 'no', 'n', '0'] and correct_answer_normalized in ['false', 'f', 'no', 'n', '0']:
+                        is_q_correct = True
+                        correct_answers += 1
+                        print(f"Question {i}: CORRECT")
+                    else:
+                        # Direct string comparison as fallback
+                        if user_answer_normalized == correct_answer_normalized:
+                            is_q_correct = True
+                            correct_answers += 1
+                            print(f"Question {i}: CORRECT")
+                        else:
+                            print(f"Question {i}: INCORRECT")
+                            
                 elif q_data['type'] == "Fill-in-the-Blank":
-                    if str(user_ans_val).strip().lower() == str(q_correct_answer).strip().lower():
+                    # Debug logging
+                    print(f"Question {i}: Checking Fill-in-the-Blank answer")
+                    print(f"User answer: '{user_ans_val}'")
+                    print(f"Correct answer: '{q_correct_answer}'")
+                    
+                    # More flexible comparison - normalize whitespace, punctuation, and case
+                    user_answer_normalized = re.sub(r'[^\w\s]', '', str(user_ans_val)).strip().lower()
+                    correct_answer_normalized = re.sub(r'[^\w\s]', '', str(q_correct_answer)).strip().lower()
+                    
+                    if user_answer_normalized == correct_answer_normalized:
                         is_q_correct = True
                         correct_answers += 1
+                        print(f"Question {i}: CORRECT")
+                    else:
+                        print(f"Question {i}: INCORRECT")
                 
                 insight_q['is_correct'] = is_q_correct
                 
@@ -272,10 +321,17 @@ def show_quiz_page():
 
         st.metric("Model Used for Quiz Generation", quiz_data['model_used'])
         
-        # Display insights
+        # Display insights with better formatting
         st.divider()
         st.header("📊 Knowledge Insights")
-        st.write(insights)
+        
+        # Check if insights contain markdown headings
+        if "# " in insights or "## " in insights:
+            # If insights already have markdown formatting, display as is
+            st.markdown(insights)
+        else:
+            # Otherwise, display as regular text
+            st.write(insights)
         
         st.divider()
         

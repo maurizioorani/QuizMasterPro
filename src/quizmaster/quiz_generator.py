@@ -121,13 +121,22 @@ class QuizGenerator:
         
     def set_model(self, model_name: str, auto_pull: bool = True) -> bool:
         """Set the model to use for generation."""
+        # Log the requested model
+        logger.info(f"Setting model to: {model_name}")
+        
+        # Normalize model name by removing 'ollama/' prefix if present
+        model_name = model_name.replace('ollama/', '')
+        
         if model_name not in self.available_models:
+            logger.error(f"Model {model_name} not available. Available models: {self.available_models}")
             raise ValueError(f"Model {model_name} not available. Choose from: {self.available_models}")
             
         # Skip local checks for OpenAI models
         if model_name in self.openai_models:
+            # Store previous model for logging
+            prev_model = self.current_model
             self.current_model = model_name
-            logger.info(f"Successfully set OpenAI model to {model_name}")
+            logger.info(f"Model changed from {prev_model} to OpenAI model {model_name}")
             return True
             
         # For Ollama models, check local availability
@@ -141,9 +150,11 @@ class QuizGenerator:
             else:
                 logger.warning(f"Model {model_name} not available locally and auto_pull is disabled")
                 return False
-                
+        
+        # Store previous model for logging
+        prev_model = self.current_model
         self.current_model = model_name
-        logger.info(f"Successfully set model to {model_name}")
+        logger.info(f"Model changed from {prev_model} to Ollama model {model_name}")
         return True
     
     def is_model_available(self, model_name: str) -> bool:
@@ -207,11 +218,15 @@ class QuizGenerator:
                          temperature: Optional[float] = None) -> Optional[str]:
         """Make LLM request with retry logic using litellm."""
         temperature = temperature or self.config.default_temperature
-
+        
+        # Log which model is being used
+        logger.info(f"Making LLM request with model: {self.current_model}")
+        
         for attempt in range(self.config.max_retries):
             try:
                 if self.current_model in self.openai_models:
                     # Use OpenAI API for OpenAI models
+                    logger.info(f"Using OpenAI API with model {self.current_model}")
                     response = completion(
                         model=self.current_model,
                         messages=[{"role": "user", "content": prompt}],
@@ -220,31 +235,45 @@ class QuizGenerator:
                     )
                 else:
                     # Use Ollama for local models - prefix with "ollama/"
+                    logger.info(f"Using Ollama API with model {self.current_model}")
                     response = completion(
                         model=f"ollama/{self.current_model}",
                         messages=[{"role": "user", "content": prompt}],
                         api_base=self.config.ollama_base_url,
                         max_tokens=max_tokens,
-                        temperature=temperature
+                        temperature=temperature,
+                        stream=False  # Ensure streaming is disabled for consistent behavior
                     )
+                
+                # Log success
+                logger.info(f"LLM request successful with model {self.current_model}")
                 return response.choices[0].message.content
+                
             except RuntimeError as e:
                 if "cannot schedule new futures after interpreter shutdown" in str(e):
                     logger.error("Interpreter shutdown detected - restart required")
                     return None
+                logger.error(f"RuntimeError in LLM request: {str(e)}")
                 raise
                 
             except Exception as e:
                 logger.warning(f"LLM request attempt {attempt + 1} failed: {str(e)}")
                 if attempt < self.config.max_retries - 1:
+                    logger.info(f"Retrying in {self.config.retry_delay * (attempt + 1)} seconds...")
                     time.sleep(self.config.retry_delay * (attempt + 1))
+                else:
+                    logger.error(f"All {self.config.max_retries} attempts failed for model {self.current_model}")
                     
         return None
     
     def _parse_json_response(self, response_text: str, schema: Dict) -> Optional[Dict]:
         """Parse and validate JSON response from LLM with improved robustness."""
         if not response_text:
+            logger.warning("Empty response from LLM")
             return None
+            
+        # Log the response for debugging
+        logger.info(f"Parsing JSON from response (first 100 chars): {response_text[:100]}...")
             
         # Try multiple extraction methods
         json_data = None
@@ -252,8 +281,9 @@ class QuizGenerator:
         # Method 1: Direct JSON parsing
         try:
             json_data = json.loads(response_text)
-        except:
-            pass
+            logger.info("Successfully parsed JSON directly")
+        except Exception as e:
+            logger.info(f"Direct JSON parsing failed: {str(e)}")
             
         # Method 2: Extract JSON using balanced brace matching
         if not json_data:
@@ -275,8 +305,9 @@ class QuizGenerator:
                     json_str = response_text[start_index:end_index+1]
                     try:
                         json_data = json.loads(json_str)
-                    except:
-                        pass
+                        logger.info("Successfully parsed JSON using brace matching")
+                    except Exception as e:
+                        logger.info(f"Brace matching JSON parsing failed: {str(e)}")
                     
         # Method 3: Try to find JSON array if object not found
         if not json_data:
@@ -298,17 +329,60 @@ class QuizGenerator:
                     json_str = response_text[start_index:end_index+1]
                     try:
                         json_data = json.loads(json_str)
-                    except:
-                        pass
+                        logger.info("Successfully parsed JSON array")
+                    except Exception as e:
+                        logger.info(f"Array JSON parsing failed: {str(e)}")
+        
+        # Method 4: Try to fix common JSON errors
+        if not json_data:
+            # Try to fix common JSON errors
+            fixed_text = response_text
+            # Replace single quotes with double quotes
+            fixed_text = re.sub(r"'([^']*)':", r'"\1":', fixed_text)
+            # Fix trailing commas
+            fixed_text = re.sub(r',\s*}', '}', fixed_text)
+            fixed_text = re.sub(r',\s*]', ']', fixed_text)
+            
+            try:
+                # Try to extract JSON with regex
+                json_match = re.search(r'({.*})', fixed_text, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(1)
+                    json_data = json.loads(json_str)
+                    logger.info("Successfully parsed JSON after fixing common errors")
+            except Exception as e:
+                logger.info(f"Fixed JSON parsing failed: {str(e)}")
                     
         # Validate against schema
         if json_data:
             try:
                 validate(instance=json_data, schema=schema)
+                logger.info("JSON validation successful")
                 return json_data
             except ValidationError as e:
                 logger.warning(f"JSON validation failed: {str(e)}")
+                # Store the error for debugging
+                self._parse_json_response_error = str(e)
                 
+                # Try to fix common validation issues
+                if isinstance(json_data, dict):
+                    # For Multiple Choice questions, ensure options have correct format
+                    if 'options' in json_data and isinstance(json_data['options'], list):
+                        for i, opt in enumerate(json_data['options']):
+                            if isinstance(opt, str):
+                                # Convert string options to proper format
+                                letter = chr(65 + i)  # A, B, C, D
+                                json_data['options'][i] = {"letter": letter, "text": opt}
+                        
+                        # Try validation again after fixes
+                        try:
+                            validate(instance=json_data, schema=schema)
+                            logger.info("JSON validation successful after fixes")
+                            return json_data
+                        except ValidationError:
+                            pass
+                
+        logger.warning("All JSON parsing methods failed")
         return None
     
     @lru_cache(maxsize=100)
@@ -320,7 +394,11 @@ class QuizGenerator:
         return f"{content_hash}_{focus_section}_{question_type}_{difficulty}_{question_num}_{uuid.uuid4().hex[:8]}"
     
     def _is_question_unique(self, new_question: Dict, existing_questions: List[Dict]) -> bool:
-        """Check if a new question is unique compared to existing questions."""        
+        """Check if a new question is unique compared to existing questions."""
+        # If we have very few questions, be more lenient
+        if len(existing_questions) < 2:
+            return True
+            
         new_text = new_question['text'].lower()
         
         # Check for similar core concepts
@@ -332,13 +410,16 @@ class QuizGenerator:
             existing_core = re.sub(r'\b(?:which|what|how|is|are|does|do|can|could|would|should)\b', '', existing_text)
             existing_core = re.sub(r'\W+', ' ', existing_core).strip()[:50]
             
-            # Check if core concepts are too similar
-            if new_core == existing_core:
+            # Check if core concepts are too similar - more lenient now
+            if new_core == existing_core and len(new_core) > 15:  # Only reject if substantial overlap
+                logger.info(f"Rejecting question due to core concept similarity: {new_core}")
                 return False
                 
-            # Check for high text similarity
+            # Check for high text similarity - more lenient threshold
             if len(new_text) > 30 and len(existing_text) > 30:
-                if SequenceMatcher(None, new_text, existing_text).ratio() > 0.7:
+                similarity = SequenceMatcher(None, new_text, existing_text).ratio()
+                if similarity > 0.85:  # Increased from 0.7 to 0.85
+                    logger.info(f"Rejecting question due to high similarity: {similarity}")
                     return False
                     
         return True
@@ -409,7 +490,7 @@ class QuizGenerator:
 
         # Generate questions with retries for failed ones
         attempts = 0
-        max_attempts = num_questions * 3  # Allow more attempts for diversity
+        max_attempts = num_questions * 6  # Allow more attempts for diversity (doubled)
 
         logger.info(f"Starting question generation loop. Target: {num_questions}, Max attempts: {max_attempts}")
         
@@ -492,6 +573,48 @@ class QuizGenerator:
                     logger.error(f"Error generating additional question: {str(e)}", exc_info=True)
         
         logger.info(f"Final question count: {len(questions)}")
+        
+        # If no questions were generated with Ollama model, try fallback to OpenAI
+        if len(questions) == 0 and self.current_model not in self.openai_models:
+            logger.warning(f"Failed to generate any questions with {self.current_model}. Attempting fallback to OpenAI.")
+            
+            # Save current model to restore later
+            original_model = self.current_model
+            
+            # Try with OpenAI model if available
+            if os.environ.get("OPENAI_API_KEY") and len(self.openai_models) > 0:
+                fallback_model = self.openai_models[0]  # Use first available OpenAI model
+                logger.info(f"Using fallback model: {fallback_model}")
+                
+                try:
+                    # Temporarily switch to OpenAI model
+                    self.current_model = fallback_model
+                    
+                    # Generate questions with OpenAI
+                    fallback_result = self.generate(
+                        processed_content,
+                        question_types,
+                        num_questions,
+                        difficulty,
+                        focus_section
+                    )
+                    
+                    # Restore original model
+                    self.current_model = original_model
+                    
+                    # Return fallback result with note
+                    fallback_result['fallback_used'] = True
+                    fallback_result['original_model'] = original_model
+                    logger.info(f"Successfully generated {len(fallback_result['questions'])} questions with fallback model.")
+                    return fallback_result
+                    
+                except Exception as e:
+                    # Restore original model if fallback fails
+                    self.current_model = original_model
+                    logger.error(f"Fallback to OpenAI also failed: {str(e)}")
+            else:
+                logger.warning("Cannot use OpenAI fallback: API key missing or no OpenAI models available")
+        
         return {
             'questions': questions,
             'metadata': {
@@ -504,7 +627,8 @@ class QuizGenerator:
                 }
             },
             'model_used': self.current_model,
-            'content_length': len(content)
+            'content_length': len(content),
+            'fallback_used': False
         }
     
     def _select_relevant_context(self, context_data: List[Dict], question_type: str, focus_section: Optional[str] = None) -> str:
@@ -708,8 +832,12 @@ Format response as valid JSON:
         return self.available_models.copy()
     
     def get_current_model(self) -> str:
-        """Get currently selected model."""
+        """Get the currently selected model name."""
         return self.current_model
+    
+    def get_model_type(self) -> str:
+        """Get the type of current model (openai or ollama)."""
+        return "openai" if self.current_model in self.openai_models else "ollama"
     
     def get_local_models(self) -> List[str]:
         """Get list of locally available Ollama models."""

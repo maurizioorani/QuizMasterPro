@@ -1,6 +1,7 @@
 import streamlit as st
 from document_processor import DocumentProcessor
 from quiz_generator import QuizGenerator
+from database_manager import DatabaseManager
 import os
 import time
 from dotenv import load_dotenv
@@ -10,9 +11,12 @@ load_dotenv()
 
 def main():
     st.set_page_config(
-        page_title="QuizMaster Pro", 
-        page_icon="📚", 
-        layout="wide"
+        page_title="QuizMaster Pro",
+        page_icon="📚",
+        layout="wide",
+        menu_items={
+            'about': None,
+        }
     )
     
     st.title("📚 QuizMaster Pro - Document to Quiz Converter")
@@ -35,6 +39,10 @@ def main():
     # Sidebar for settings and configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
+        
+        # Add navigation links
+        st.page_link("pages/02_Saved_Quizzes.py", label="💾 Browse Saved Quizzes", icon="📚")
+        st.divider()
         
         # Separate Model Selection for Document Processing (Embedding)
         st.subheader("🤖 Embedding Model (Document Processing)")
@@ -402,8 +410,21 @@ def main():
                         
                         gen_progress_bar.progress(10)
                         
-                        # Check connection based on model type
+                        # Ensure selected model is applied
                         current_model = st.session_state.quiz_generator.get_current_model()
+                        selected_model = quiz_model  # From sidebar selectbox
+                        
+                        # If selected model doesn't match current model, apply it automatically
+                        if current_model != selected_model:
+                            st.info(f"Applying selected model: {selected_model}")
+                            try:
+                                st.session_state.quiz_generator.set_model(selected_model)
+                                current_model = selected_model
+                            except Exception as e:
+                                st.error(f"Error setting model: {str(e)}")
+                                st.stop()
+                        
+                        # Check connection based on model type
                         is_openai_model = current_model in st.session_state.quiz_generator.openai_models
                         
                         if is_openai_model:
@@ -435,14 +456,75 @@ def main():
                         st.session_state.user_answers = {}
                         st.session_state.show_results = False
                         
-                    st.success(f"✅ Generated {len(quiz_data['questions'])} questions!")
-                    st.page_link("pages/01_Interactive_Quiz.py", label="🎓 Go to Interactive Quiz", icon="➡️")
-                    
-                    with st.expander("ℹ️ Generation Info"):
+                    # Check if questions were generated
+                    if len(quiz_data['questions']) > 0:
+                        st.success(f"✅ Generated {len(quiz_data['questions'])} questions!")
+                        
+                        # Option to save the quiz
+                        with st.expander("💾 Save Quiz for Later Use", expanded=True):
+                            quiz_title = st.text_input("Quiz Title", value=f"Quiz on {uploaded_file.name if uploaded_file else 'Selected Documents'}")
+                            quiz_description = st.text_area("Quiz Description (optional)", value=f"A {difficulty} difficulty quiz with {num_questions} questions")
+                            quiz_tags = st.text_input("Tags (comma-separated, optional)", value=f"{difficulty},quiz")
+                            
+                            if st.button("Save Quiz to Database", type="primary"):
+                                try:
+                                    # Process tags
+                                    tags_list = [tag.strip() for tag in quiz_tags.split(',')] if quiz_tags else []
+                                    
+                                    # Save to database
+                                    db = DatabaseManager()
+                                    quiz_id = db.save_quiz(
+                                        title=quiz_title,
+                                        quiz_data=quiz_data,
+                                        description=quiz_description,
+                                        tags=tags_list
+                                    )
+                                    
+                                    if quiz_id:
+                                        st.success(f"✅ Quiz saved successfully with ID: {quiz_id}")
+                                    else:
+                                        st.error("Failed to save quiz")
+                                except Exception as e:
+                                    st.error(f"Error saving quiz: {str(e)}")
+                        
+                        # Create a more prominent button for the quiz page
+                        st.markdown("### Ready to take the quiz?")
+                        
+                        # Use columns to center the button and make it larger
+                        col1, col2, col3 = st.columns([1, 2, 1])
+                        with col2:
+                            st.page_link(
+                                "pages/01_Interactive_Quiz.py",
+                                label="🎓 Go to Interactive Quiz",
+                                icon="➡️",
+                                use_container_width=True
+                            )
+                            
+                            # Add custom CSS to make the button more prominent
+                            st.markdown("""
+                            <style>
+                            .stPageLink {
+                                font-size: 1.5rem !important;
+                                padding: 1rem !important;
+                                text-align: center !important;
+                                margin: 1rem 0 !important;
+                            }
+                            </style>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.warning("⚠️ No questions were generated. Please try a different model or content.")
+                        
+                    # Show generation info
+                    with st.expander("ℹ️ Generation Info", expanded=True):
                         st.write(f"**Model Used:** {quiz_data['model_used']}")
                         st.write(f"**Content Length:** {quiz_data['content_length']} characters")
                         st.write(f"**Questions Generated:** {len(quiz_data['questions'])}")
                         st.write(f"**Selected Difficulty:** {difficulty}")
+                        
+                        # Show fallback info if used
+                        if quiz_data.get('fallback_used', False):
+                            st.warning(f"⚠️ Fallback to OpenAI was used because {quiz_data.get('original_model', 'the selected model')} failed to generate questions.")
+                            st.info("To use local models successfully, make sure Ollama is running and the model is properly installed.")
                         
                 except Exception as e:
                     st.error(f"❌ Error generating quiz: {str(e)}")
