@@ -395,7 +395,10 @@ As an expert educational analyst, provide a comprehensive learning insights repo
 
 {context_info}
 
-IMPORTANT CONTEXT ANALYSIS:
+CRITICAL INSTRUCTIONS:
+- ALWAYS reference the specific questions answered in your analysis
+- Use the actual question content and user responses provided above
+- Be specific about what topics were covered and how the user performed on each
 - If accuracy rate is 85% or higher, this indicates EXCELLENT performance that should be celebrated
 - If accuracy rate is 100%, this indicates PERFECT performance - focus on congratulating and suggesting advanced challenges
 - If accuracy rate is 70-84%, this indicates GOOD performance with room for refinement
@@ -404,42 +407,47 @@ IMPORTANT CONTEXT ANALYSIS:
 Please structure your response with these sections:
 
 ## 📊 PERFORMANCE OVERVIEW
-- Summarize overall performance with key metrics
-- If accuracy is 90%+, emphasize EXCELLENT performance
-- If accuracy is 100%, celebrate PERFECT performance
-- Highlight the most significant findings
+- Reference the SPECIFIC QUESTIONS answered and performance on each
+- Mention the actual topics/concepts that were tested
+- If accuracy is 90%+, emphasize EXCELLENT performance with specific examples
+- If accuracy is 100%, celebrate PERFECT performance citing the actual questions mastered
+- Highlight the most significant findings based on actual quiz content
 
 ## 🎯 LEARNING ANALYSIS  
-- Analyze learning patterns and cognitive indicators
-- For high performers (85%+), focus on mastery indicators
-- Identify learning style preferences
-- Assess knowledge retention and comprehension
+- Analyze performance patterns based on the SPECIFIC QUESTION ANALYSIS provided
+- Reference the actual question types and difficulties the user encountered
+- For high performers (85%+), focus on mastery indicators from the specific questions
+- Identify learning style preferences based on actual performance data
+- Assess knowledge retention based on the specific topics covered
 
 ## 📈 STRENGTHS & ACHIEVEMENTS
-- Celebrate what the learner did well (especially important for high scores)
-- Identify strong knowledge areas
-- Highlight positive learning indicators
-- For perfect scores, emphasize exceptional understanding
+- Celebrate what the learner did well on SPECIFIC QUESTIONS and topics
+- Reference the actual subject areas where they demonstrated mastery
+- Highlight positive learning indicators from the actual quiz performance
+- For perfect scores, emphasize exceptional understanding of the specific concepts tested
 
 ## 🔍 IMPROVEMENT OPPORTUNITIES
-- For high performers (85%+), suggest ADVANCED challenges rather than remedial work
-- For perfect scores (100%), focus on next-level applications and deeper exploration
-- For lower performers, identify specific areas needing attention
-- Always maintain encouraging tone
+- Base recommendations on the SPECIFIC AREAS identified in the analysis
+- For high performers (85%+), suggest ADVANCED challenges in the actual subject areas covered
+- For perfect scores (100%), focus on next-level applications of the specific topics tested
+- For lower performers, identify specific concepts from the quiz that need attention
+- Always maintain encouraging tone while being specific about the content
 
 ## 🛠️ PERSONALIZED RECOMMENDATIONS
-- For excellent performance: Suggest advanced topics, teaching others, or deeper applications
-- For good performance: Suggest consolidation and challenging extensions
-- For struggling performance: Provide foundational review and practice
-- Include both immediate and long-term recommendations
+- Base all recommendations on the SPECIFIC TOPICS and concepts from the quiz
+- For excellent performance: Suggest advanced applications of the actual subject matter covered
+- For good performance: Suggest deeper exploration of the specific concepts tested
+- For struggling performance: Provide targeted review of the specific areas missed
+- Include both immediate and long-term recommendations tied to the actual content
 
 ## 🎓 NEXT STEPS & MOTIVATION
-- For high achievers: Challenge them with advanced material and applications
-- For perfect scores: Suggest exploration of related advanced topics
-- Always provide encouraging and motivational guidance
-- Set appropriate difficulty level for next challenges
+- Suggest next steps based on the SPECIFIC SUBJECT AREAS covered in the quiz
+- For high achievers: Challenge them with advanced applications of the actual topics
+- For perfect scores: Suggest exploration of related advanced concepts in the same subject area
+- Always provide encouraging guidance that acknowledges their specific achievements
+- Set appropriate difficulty level for next challenges in the same subject domain
 
-Use a supportive, constructive tone that matches the performance level. Celebrate successes appropriately and provide challenges that match the demonstrated competency.
+IMPORTANT: Your analysis must be grounded in the specific question content, topics, and performance data provided. Avoid generic statements - always reference the actual quiz content and user performance on specific questions and topics.
 """
         
         try:
@@ -480,17 +488,27 @@ Use a supportive, constructive tone that matches the performance level. Celebrat
         """Prepare rich context information for LLM prompt"""
         
         basic_metrics = quiz_analysis['basic_metrics']
+        question_analysis = quiz_analysis.get('question_analysis', [])
         
         context = f"""
 QUIZ PERFORMANCE DATA:
 - Total Questions: {basic_metrics['total_questions']}
-- Accuracy Rate: {basic_metrics['accuracy_rate']}%
+- Accuracy Rate: {basic_metrics['accuracy_rate']}% ({basic_metrics['correct_answers']} out of {basic_metrics['answered_questions']} answered correctly)
 - Completion Rate: {basic_metrics['completion_rate']}%
-- Questions Correct: {basic_metrics['correct_answers']}/{basic_metrics['answered_questions']}
 
-PERFORMANCE BY QUESTION TYPE:
+SPECIFIC QUESTION ANALYSIS:
 """
         
+        # Add specific details about each question
+        for i, question_detail in enumerate(question_analysis[:5]):  # Show up to 5 questions for context
+            status = "✓ CORRECT" if question_detail['is_correct'] else "✗ INCORRECT"
+            context += f"Question {i+1}: {question_detail['question_text'][:80]}...\n"
+            context += f"  - User answered: {question_detail['user_answer']}\n"
+            context += f"  - Correct answer: {question_detail['correct_answer']}\n"
+            context += f"  - Result: {status}\n"
+            context += f"  - Type: {question_detail['type']}, Difficulty: {question_detail['difficulty']}\n\n"
+        
+        context += f"PERFORMANCE BY QUESTION TYPE:\n"
         for q_type, stats in quiz_analysis['performance_by_type'].items():
             accuracy = (stats['correct'] / stats['answered'] * 100) if stats['answered'] > 0 else 0
             context += f"- {q_type}: {accuracy:.1f}% accuracy ({stats['correct']}/{stats['answered']})\n"
@@ -500,10 +518,17 @@ PERFORMANCE BY QUESTION TYPE:
             accuracy = (stats['correct'] / stats['answered'] * 100) if stats['answered'] > 0 else 0
             context += f"- {difficulty}: {accuracy:.1f}% accuracy ({stats['correct']}/{stats['answered']})\n"
         
+        # Add strongest areas first (for positive reinforcement)
+        strong_areas = quiz_analysis.get('strongest_areas', [])
+        if strong_areas:
+            context += f"\nSTRONGEST PERFORMANCE AREAS:\n"
+            for area in strong_areas[:3]:
+                context += f"- {area['topic']}: {area['accuracy']:.1f}% accuracy (mastered)\n"
+        
         # Add weakest areas
         weak_areas = quiz_analysis.get('weakest_areas', [])
         if weak_areas:
-            context += f"\nWEAKEST AREAS:\n"
+            context += f"\nAREAS NEEDING ATTENTION:\n"
             for area in weak_areas[:3]:
                 context += f"- {area['topic']}: {area['accuracy']:.1f}% accuracy\n"
         
@@ -517,14 +542,17 @@ PERFORMANCE BY QUESTION TYPE:
             
             key_points = document_context.get('key_points', [])
             if key_points:
-                context += f"- Key Topics Covered: {', '.join(key_points[:3])}\n"
+                context += f"- Key Topics from Document: {', '.join(key_points[:3])}\n"
         
-        # Add learning patterns
-        knowledge_gaps = learning_patterns.get('knowledge_gaps', [])
-        if knowledge_gaps:
-            context += f"\nIDENTIFIED KNOWLEDGE GAPS:\n"
-            for gap in knowledge_gaps[:3]:
-                context += f"- {gap}\n"
+        # IMPORTANT PERFORMANCE INTERPRETATION
+        if basic_metrics['accuracy_rate'] == 100:
+            context += f"\n🎯 PERFORMANCE INTERPRETATION: PERFECT SCORE - User answered ALL questions correctly (100% accuracy)\n"
+        elif basic_metrics['accuracy_rate'] >= 90:
+            context += f"\n🎯 PERFORMANCE INTERPRETATION: EXCELLENT PERFORMANCE - User scored {basic_metrics['accuracy_rate']}% which is outstanding\n"
+        elif basic_metrics['accuracy_rate'] >= 80:
+            context += f"\n🎯 PERFORMANCE INTERPRETATION: GOOD PERFORMANCE - User scored {basic_metrics['accuracy_rate']}% showing solid understanding\n"
+        else:
+            context += f"\n🎯 PERFORMANCE INTERPRETATION: NEEDS IMPROVEMENT - User scored {basic_metrics['accuracy_rate']}% indicating areas to focus on\n"
         
         return context
     
