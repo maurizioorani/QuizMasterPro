@@ -716,15 +716,19 @@ class VectorManager:
                         # Determine if extraction was successful
                         has_meaningful_concepts = any(
                             concept_data.get("items") and len(concept_data["items"]) > 0 
+                            and any(item.get("value", "").strip() for item in concept_data["items"])
                             for concept_data in concepts.values() 
                             if isinstance(concept_data, dict)
                         )
+                        
+                        # Simplified status determination - if we have meaningful concepts, it's completed
+                        extraction_status = "completed" if has_meaningful_concepts else "pending"
                         
                         doc_info["extracted_summary"] = {
                             "concept_count": len(concepts),
                             "main_topic": main_topic_value,
                             "document_type": doc_type_value,
-                            "extraction_status": "completed" if has_meaningful_concepts else "pending"
+                            "extraction_status": extraction_status
                         }
                     else:
                         # Try to trigger concept extraction for old documents without concepts

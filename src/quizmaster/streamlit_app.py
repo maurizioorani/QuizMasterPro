@@ -287,23 +287,25 @@ def main():
                             st.write("**Status:** No extraction data available")
                 
                 with col2:
-                    # Show status indicator with better logic
+                    # Show status indicator with improved logic to avoid duplicate Processing messages
                     if 'extracted_summary' in doc:
                         status = doc['extracted_summary'].get('extraction_status', 'unknown')
                         concept_count = doc['extracted_summary'].get('concept_count', 0)
                         main_topic = doc['extracted_summary'].get('main_topic', 'Unknown')
                         
-                        # More robust status determination
-                        if status == 'completed' and concept_count > 0 and main_topic not in ['Processing...', 'Not processed yet', 'Unknown']:
+                        # Simplified and more accurate status determination
+                        if concept_count > 0 and main_topic not in ['Processing...', 'Not processed yet', 'Unknown', '', 'Processing failed', 'No content available']:
                             st.success("✅ Ready")
                         elif status == 'failed' or main_topic in ['Processing failed', 'No content available']:
                             st.error("❌ Failed")
-                        elif status == 'pending' or main_topic in ['Processing...', 'Not processed yet']:
+                        elif status == 'pending' and main_topic in ['Processing...', 'Not processed yet']:
                             st.warning("⏳ Processing")
-                        elif concept_count > 0:
-                            st.success("✅ Ready")  # Force ready if we have concepts
                         else:
-                            st.info("🔄 Needs processing")
+                            # Default to Ready if we have any concepts, otherwise needs processing
+                            if concept_count > 0:
+                                st.success("✅ Ready")
+                            else:
+                                st.info("🔄 Needs processing")
                     else:
                         st.info("🔄 Needs processing")
             
@@ -324,6 +326,8 @@ def main():
                             combined_content = ""
                             combined_metadata = {'chapters': [], 'sections': [], 'total_words': 0, 'total_paragraphs': 0}
                             
+                            combined_extracted_concepts = {}
+                            
                             for doc_id in selected_ids:
                                 doc_data = st.session_state.vector_manager.get_document(doc_id)
                                 if doc_data:
@@ -334,11 +338,42 @@ def main():
                                     combined_metadata['total_words'] += doc_data['metadata']['total_words']
                                     combined_metadata['total_paragraphs'] += doc_data['metadata']['total_paragraphs']
                                     
-                                    # Add extracted concepts if available
-                                    if 'extracted_concepts' in doc_data:
-                                        if 'all_extracted_concepts' not in combined_metadata:
-                                            combined_metadata['all_extracted_concepts'] = []
-                                        combined_metadata['all_extracted_concepts'].extend(doc_data['extracted_concepts'])
+                                    # Properly combine extracted concepts from database (ContextGem format)
+                                    if 'extracted_concepts' in doc_data and doc_data['extracted_concepts']:
+                                        stored_concepts = doc_data['extracted_concepts']
+                                        
+                                        # Handle both dict (ContextGem) and list (document processor) formats
+                                        if isinstance(stored_concepts, dict):
+                                            # ContextGem format: merge concept categories
+                                            for concept_name, concept_data in stored_concepts.items():
+                                                if concept_name not in combined_extracted_concepts:
+                                                    combined_extracted_concepts[concept_name] = {"items": []}
+                                                
+                                                # Add items, avoiding duplicates
+                                                existing_values = {item.get("value", "") for item in combined_extracted_concepts[concept_name]["items"]}
+                                                for item in concept_data.get("items", []):
+                                                    if item.get("value") and item["value"] not in existing_values:
+                                                        combined_extracted_concepts[concept_name]["items"].append(item)
+                                        
+                                        elif isinstance(stored_concepts, list):
+                                            # Document processor format: convert to ContextGem format
+                                            for concept in stored_concepts:
+                                                if isinstance(concept, dict):
+                                                    concept_name = concept.get('concept_name', 'Extracted Concepts')
+                                                    concept_content = concept.get('content', '')
+                                                    
+                                                    if concept_content and concept_content.strip():
+                                                        if concept_name not in combined_extracted_concepts:
+                                                            combined_extracted_concepts[concept_name] = {"items": []}
+                                                        
+                                                        # Check for duplicates
+                                                        existing_values = {item.get("value", "") for item in combined_extracted_concepts[concept_name]["items"]}
+                                                        if concept_content not in existing_values:
+                                                            combined_extracted_concepts[concept_name]["items"].append({
+                                                                "value": concept_content,
+                                                                "references": [],
+                                                                "justification": concept.get("metadata", {}).get("extraction_method", "Loaded from database")
+                                                            })
                                     
                             if combined_content.strip():
                                 st.session_state.processed_content = {
@@ -347,7 +382,7 @@ def main():
                                     'metadata': combined_metadata,
                                     'filename': f"{len(selected_ids)} selected documents",
                                     'format': 'combined',
-                                    'extracted_concepts': combined_metadata.get('all_extracted_concepts', [])
+                                    'extracted_concepts': combined_extracted_concepts  # Properly formatted ContextGem concepts
                                 }
                                 st.success(f"Loaded {len(selected_ids)} documents")
                                 st.rerun()
@@ -418,20 +453,22 @@ def main():
                 # Combine concepts from both sources
                 concept_groups = {}
                 
-                # Add ContextGem concepts if available
+                # Add ContextGem concepts if available (including those loaded from database)
                 if has_contextgem_concepts:
                     extracted_concepts = st.session_state.processed_content['extracted_concepts']
                     if isinstance(extracted_concepts, dict):
                         for concept_name, concept_data in extracted_concepts.items():
                             if isinstance(concept_data, dict) and 'items' in concept_data:
-                                concept_groups[concept_name] = [item.get('value', '') for item in concept_data['items'] if item.get('value')]
+                                valid_concepts = [item.get('value', '').strip() for item in concept_data['items'] if item.get('value', '').strip()]
+                                if valid_concepts:  # Only add if we have valid concepts
+                                    concept_groups[concept_name] = valid_concepts
                     elif isinstance(extracted_concepts, list):
                         # Handle case where extracted_concepts is a list of concept objects
                         for i, concept in enumerate(extracted_concepts):
                             if isinstance(concept, dict):
                                 concept_name = concept.get('concept_name', f'Concept {i+1}')
-                                concept_content = concept.get('content', '')
-                                if concept_content and concept_content.strip():
+                                concept_content = concept.get('content', '').strip()
+                                if concept_content:
                                     if concept_name not in concept_groups:
                                         concept_groups[concept_name] = []
                                     concept_groups[concept_name].append(concept_content)
