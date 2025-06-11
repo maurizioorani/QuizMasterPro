@@ -125,12 +125,13 @@ ollama serve
 
 ### Core Components
 ```
-├── streamlit_app.py        # Main interface & topic selection
-├── document_processor.py   # ContextGem integration & parsing
-├── vector_manager.py       # Enhanced ChromaDB operations
-├── quiz_generator.py       # AI-powered question generation
-├── insights_generator.py   # Advanced analytics & recommendations
-└── database_manager.py     # Quiz sessions & performance tracking
+├── streamlit_app.py        # Main Streamlit UI, event handling, and orchestration
+├── llm_manager.py          # Manages LLM interactions (OpenAI/Ollama via LiteLLM) & shared model configuration
+├── document_processor.py   # Document parsing, text extraction & ContextGem-based concept extraction
+├── vector_manager.py       # Document storage (PostgreSQL), ContextGem processing & retrieval logic
+├── quiz_generator.py       # AI-powered quiz question generation from processed content
+├── insights_generator.py   # Generates learning insights and performance analytics
+└── database_manager.py     # Handles PostgreSQL database interactions (quiz sessions, documents)
 ```
 
 ### Document Processing with ContextGem
