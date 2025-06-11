@@ -2,7 +2,7 @@
 
 Transform any document into intelligent, personalized quizzes using AI. QuizMaster Pro offers flexible document processing and quiz generation using either OpenAI or local Ollama models.
 
-<video src="https://github.com/maurizioorani/QuizMasterPro/blob/main/screenshots/QuizMasterPro.mov"/>
+![QuizMasterPro Demo](https://github.com/maurizioorani/QuizMasterPro/raw/main/screenshots/QuizMasterPro.gif)
 
 ## 🎯 Core Concept
 
@@ -14,7 +14,7 @@ Upload documents → AI extracts key concepts → Select topics to focus on → 
 - **Multi-format support**: PDF, DOCX, TXT, HTML with robust error handling
 - **Advanced concept extraction**: Dual-source extraction using ContextGem + direct LLM analysis
 - **Interactive topic selection**: Browse and select from automatically extracted concepts and topics
-- **Persistent storage**: ChromaDB-based document management with semantic search capabilities
+- **Persistent storage**: Document management with semantic search capabilities
 - **Model synchronization**: Consistent AI model usage across document processing and quiz generation
 
 ### 🧠 Intelligent Quiz Generation
@@ -133,11 +133,11 @@ ollama serve
 └── database_manager.py     # Quiz sessions & performance tracking
 ```
 
-### Enhanced Vector Storage
-- **ContextGem-powered**: Advanced concept extraction and aspect analysis
-- **Smart retrieval**: Semantic search based on extracted concepts
-- **Rich metadata**: Document structure, creation timestamps, extraction summaries
-- **Topic mapping**: Organized concept categories for targeted quiz generation
+### Document Processing with ContextGem
+- **ContextGem Integration**: We leverage ContextGem for advanced document understanding and concept extraction. ContextGem is ideal for this application because it excels at breaking down complex documents into structured, meaningful concepts and aspects, which is crucial for generating targeted and relevant quiz questions. Its ability to identify key definitions, main ideas, and important facts directly supports our goal of transforming documents into personalized learning experiences.
+- **Smart Retrieval**: Semantic search based on extracted concepts allows for efficient retrieval of relevant document sections for quiz generation.
+- **Rich Metadata**: Document structure, creation timestamps, and extraction summaries are stored as metadata for comprehensive document management.
+- **Topic Mapping**: Organized concept categories facilitate targeted quiz generation based on specific topics selected by the user.
 
 ### Intelligent Analytics Pipeline
 - **Performance analysis**: Multi-dimensional scoring and pattern recognition
