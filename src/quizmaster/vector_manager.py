@@ -5,17 +5,19 @@ import hashlib
 from typing import Dict, List, Optional, Union
 import logging
 from pathlib import Path
+from .config import QuizConfig # Added for QuizConfig type hint
+import requests # Ensure requests is imported if not already (it's used in _initialize_contextgem)
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 try:
     from contextgem import (
-        Document, 
-        DocumentLLM, 
-        Aspect, 
-        StringConcept, 
-        JsonObjectConcept, 
+        Document,
+        DocumentLLM,
+        Aspect,
+        StringConcept,
+        JsonObjectConcept,
         DateConcept,
         NumericalConcept,
         BooleanConcept,
@@ -34,9 +36,11 @@ from database_manager import DatabaseManager
 class VectorManager:
     """Enhanced Vector Manager using ContextGem for intelligent document processing"""
     
-    def __init__(self):
+    def __init__(self, config: Optional[QuizConfig] = None):
         self.embeddings_available = CONTEXTGEM_AVAILABLE
         self.db = DatabaseManager()
+        self.config = config # Store the passed config
+        self.llm: Optional[DocumentLLM] = None # Ensure self.llm is defined
         
         # Initialize ContextGem components
         if CONTEXTGEM_AVAILABLE:
@@ -46,81 +50,111 @@ class VectorManager:
         else:
             logger.warning("Vector storage disabled - ContextGem not available")
 
+    def update_llm_configuration(self):
+        """
+        Re-initializes the ContextGem DocumentLLM instance based on the current
+        configuration. This should be called if the global model config changes.
+        """
+        if CONTEXTGEM_AVAILABLE: # Only try if library is there
+            logger.info("VectorManager attempting to update LLM configuration for ContextGem.")
+            if not self.config:
+                logger.warning("VectorManager has no config set; LLM re-initialization might use defaults.")
+            self._initialize_contextgem()
+        else:
+            logger.warning("VectorManager: ContextGem not available, cannot update LLM configuration.")
+
+
     def _initialize_contextgem(self):
-        """Initialize ContextGem with available LLM providers"""
+        """Initialize ContextGem DocumentLLM instance, preferring UI selected model if OpenAI."""
+        self.llm = None # Reset llm instance before re-initializing
+        self.embeddings_available = False # Reset status
+
         try:
-            # Check for Ollama first (priority for local models)
+            openai_api_key = os.environ.get("OPENAI_API_KEY")
+            anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+            # Priority 1: Use globally selected OpenAI model if available and an API key is present
+            if self.config and self.config.current_model and self.config.current_model in self.config.openai_models:
+                if openai_api_key:
+                    cg_model_name = self.config.current_model
+                    if not cg_model_name.startswith("openai/"):
+                        cg_model_name = f"openai/{cg_model_name}"
+                    
+                    self.llm = DocumentLLM(model=cg_model_name, api_key=openai_api_key)
+                    logger.info(f"VectorManager using UI selected OpenAI model '{cg_model_name}' for ContextGem.")
+                    self.embeddings_available = True # Mark as available since we successfully configured an LLM
+                    return
+                else:
+                    logger.error(f"VectorManager: UI selected OpenAI model {self.config.current_model} but OPENAI_API_KEY not found. Cannot use this model.")
+                    self.llm = None
+                    self.embeddings_available = False # Explicitly mark as unavailable
+                    logger.warning("VectorManager: ContextGem LLM set to None due to missing API key for selected OpenAI model.")
+                    return # Explicitly stop further model search
+
+            # Priority 2: Try Ollama
             ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-            
-            # Try Ollama first
             try:
-                import requests
-                response = requests.get(f"{ollama_base_url}/api/tags", timeout=5)
+                response = requests.get(f"{ollama_base_url}/api/tags", timeout=2)
                 if response.status_code == 200:
-                    models = response.json()
-                    available_models = [model['name'] for model in models.get('models', [])]
+                    models_data = response.json()
+                    available_ollama_models = [model['name'] for model in models_data.get('models', [])]
+                    logger.info(f"VectorManager: Available local Ollama models: {available_ollama_models}")
+
+                    selected_ollama_model = None # Ensure it's reset
+                    ui_selected_model = self.config.current_model if self.config else None
+                    logger.info(f"VectorManager: UI selected model (config.current_model): {ui_selected_model}")
+
+                    # Check if UI selected model is an Ollama model and is available
+                    # Assuming openai_models list is also in self.config if config is present
+                    is_ui_model_openai = self.config and self.config.openai_models and ui_selected_model in self.config.openai_models
+
+                    if ui_selected_model and not is_ui_model_openai and ui_selected_model in available_ollama_models:
+                        selected_ollama_model = ui_selected_model
+                        logger.info(f"VectorManager: UI selected Ollama model '{selected_ollama_model}' is available locally.")
+                    else:
+                        if ui_selected_model and not is_ui_model_openai:
+                             logger.info(f"VectorManager: UI selected Ollama model '{ui_selected_model}' is NOT available locally or not an Ollama model. Checking preferred list.")
+                        # Fallback to preferred Ollama models
+                        preferred_ollama_models = ["mistral:7b", "qwen2.5:7b", "llama3.3:8b", "deepseek-coder:6.7b"]
+                        for model in preferred_ollama_models:
+                            if model in available_ollama_models:
+                                selected_ollama_model = model
+                                logger.info(f"VectorManager: Found preferred Ollama model '{selected_ollama_model}' locally.")
+                                break
+                        if not selected_ollama_model and available_ollama_models:
+                            selected_ollama_model = available_ollama_models[0]
+                            logger.info(f"VectorManager: Using first available Ollama model '{selected_ollama_model}' locally.")
                     
-                    # Prefer these models for ContextGem in order
-                    preferred_models = [
-                        "mistral:7b",
-                        "qwen2.5:7b", 
-                        "gemma2:9b",
-                        "llama3.3:8b",
-                        "deepseek-coder:6.7b"
-                    ]
-                    
-                    # Find first available preferred model
-                    selected_model = None
-                    for model in preferred_models:
-                        if model in available_models:
-                            selected_model = model
-                            break
-                    
-                    # If no preferred model, use first available
-                    if not selected_model and available_models:
-                        selected_model = available_models[0]
-                    
-                    if selected_model:
-                        self.llm = DocumentLLM(
-                            model=f"ollama/{selected_model}",
-                            api_base=ollama_base_url
-                        )
-                        logger.info(f"Using Ollama model '{selected_model}' for ContextGem processing")
+                    if selected_ollama_model:
+                        self.llm = DocumentLLM(model=f"ollama/{selected_ollama_model}", api_base=ollama_base_url)
+                        logger.info(f"VectorManager using Ollama model '{selected_ollama_model}' for ContextGem.")
+                        self.embeddings_available = True
                         return
-                        
-            except Exception as ollama_error:
-                logger.info(f"Ollama not available: {ollama_error}")
-            
-            # Fallback to OpenAI if Ollama not available
-            api_key = (
-                os.environ.get("CONTEXTGEM_OPENAI_API_KEY") or 
-                os.environ.get("OPENAI_API_KEY") or
-                os.environ.get("CONTEXTGEM_ANTHROPIC_API_KEY") or
-                os.environ.get("ANTHROPIC_API_KEY")
-            )
-            
-            if not api_key:
-                logger.warning("No Ollama connection and no API key found. ContextGem features disabled.")
-                self.embeddings_available = False
+            except Exception as e:
+                logger.info(f"VectorManager: Ollama not available or error selecting model: {e}")
+
+            # Priority 3: Fallback to hardcoded OpenAI model if key exists
+            if openai_api_key:
+                self.llm = DocumentLLM(model="openai/gpt-4o-mini", api_key=openai_api_key)
+                logger.info("VectorManager using fallback OpenAI model 'gpt-4o-mini' for ContextGem.")
+                self.embeddings_available = True
                 return
             
-            # Initialize DocumentLLM with available provider
-            if os.environ.get("CONTEXTGEM_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY"):
-                self.llm = DocumentLLM(
-                    model="openai/gpt-4o-mini",
-                    api_key=api_key
-                )
-                logger.info("Using OpenAI for ContextGem processing (Ollama not available)")
-            elif os.environ.get("CONTEXTGEM_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"):
-                self.llm = DocumentLLM(
-                    model="anthropic/claude-3-5-sonnet",
-                    api_key=api_key
-                )
-                logger.info("Using Anthropic for ContextGem processing (Ollama not available)")
-            
+            # Priority 4: Fallback to Anthropic
+            if anthropic_api_key:
+                self.llm = DocumentLLM(model="anthropic/claude-3-5-sonnet", api_key=anthropic_api_key)
+                logger.info("VectorManager using fallback Anthropic model 'claude-3-5-sonnet' for ContextGem.")
+                self.embeddings_available = True
+                return
+
+            logger.warning("VectorManager: ContextGem LLM could not be initialized. No suitable model configuration found. Embeddings/ContextGem features might be limited.")
+            self.embeddings_available = False # Ensure this is set if no LLM is configured
+            self.llm = None
+
         except Exception as e:
-            logger.error(f"Failed to initialize ContextGem: {e}")
+            logger.error(f"VectorManager: Failed to initialize ContextGem LLM: {e}", exc_info=True)
             self.embeddings_available = False
+            self.llm = None
 
     def _create_enhanced_documents_table(self):
         """Create enhanced table for storing documents with extracted concepts"""
@@ -162,35 +196,52 @@ class VectorManager:
 
     def _setup_extraction_pipeline(self):
         """Setup simple extraction pipeline for fast document processing"""
-        # Simplified concepts for faster processing
+        # Expanded default concepts for richer extraction
         self.default_concepts = [
-            StringConcept(
-                name="Main Topic",
-                description="Primary topic or subject of the document",
-                singular_occurrence=True,
-                add_references=False  # Disable references for speed
-            ),
-            StringConcept(
-                name="Document Type",
-                description="Type or category of the document (e.g., report, article, manual)",
-                singular_occurrence=True,
-                add_references=False
-            )
+            StringConcept(name="Main Topic", description="Primary topic or subject of the document", singular_occurrence=True, add_references=False),
+            StringConcept(name="Document Type", description="Type or category of the document (e.g., report, article, manual)", singular_occurrence=True, add_references=False),
+            StringConcept(name="Key Arguments", description="Main arguments or theses presented", singular_occurrence=False, add_references=False),
+            StringConcept(name="Conclusions", description="Main conclusions or outcomes reported", singular_occurrence=False, add_references=False),
+            StringConcept(name="Technical Terms", description="Specific technical terms or jargon used", singular_occurrence=False, add_references=False),
+            StringConcept(name="Key People", description="Important individuals mentioned", singular_occurrence=False, add_references=False),
+            StringConcept(name="Key Organizations", description="Important organizations or entities mentioned", singular_occurrence=False, add_references=False),
+            StringConcept(name="Locations", description="Geographical places mentioned", singular_occurrence=False, add_references=False),
+            DateConcept(name="Key Dates", description="Significant dates or time periods mentioned", singular_occurrence=False, add_references=False),
+            NumericalConcept(name="Key Figures", description="Important numbers or statistics presented", singular_occurrence=False, add_references=False)
         ]
         
-        # Optional: Simple pipeline for when aspects are needed
+        # Enhanced pipeline for aspects
         self.simple_pipeline = DocumentPipeline()
+        key_info_concepts = [
+            StringConcept(name="Key Topics", description="Main topics covered in the document", add_references=False, singular_occurrence=False),
+            StringConcept(name="Summary Points", description="Brief summary points or takeaways", add_references=False, singular_occurrence=False)
+        ]
+        # Add some of the default concepts to Key Information aspect if relevant
+        for concept in self.default_concepts:
+            if concept.name in ["Key Arguments", "Conclusions", "Technical Terms"]:
+                key_info_concepts.append(StringConcept(name=concept.name, description=concept.description, add_references=False, singular_occurrence=False))
+
         self.simple_pipeline.aspects = [
             Aspect(
                 name="Key Information",
-                description="Main topics and important information",
+                description="Core informational content of the document",
+                concepts=key_info_concepts
+            ),
+            Aspect(
+                name="Contextual Elements",
+                description="People, places, and organizations providing context",
                 concepts=[
-                    StringConcept(
-                        name="Key Topics",
-                        description="Main topics covered in the document",
-                        add_references=False,  # Disable for speed
-                        singular_occurrence=False
-                    )
+                    StringConcept(name="Mentioned People", description="Individuals discussed", add_references=False, singular_occurrence=False),
+                    StringConcept(name="Mentioned Organizations", description="Entities discussed", add_references=False, singular_occurrence=False),
+                    StringConcept(name="Mentioned Locations", description="Places discussed", add_references=False, singular_occurrence=False)
+                ]
+            ),
+            Aspect(
+                name="Document Purpose",
+                description="The intended purpose and audience of the document",
+                concepts=[
+                    StringConcept(name="Stated Purpose", description="The explicit or implicit purpose of the document", add_references=False, singular_occurrence=True),
+                    StringConcept(name="Target Audience", description="The intended audience for the document", add_references=False, singular_occurrence=True)
                 ]
             )
         ]
@@ -336,16 +387,11 @@ class VectorManager:
             # Create minimal document
             cg_doc = Document(raw_text=content)
             
-            # Add only one simple concept for speed
-            simple_concept = StringConcept(
-                name="Main Topic",
-                description="Primary topic of the document",
-                singular_occurrence=True,
-                add_references=False
-            )
-            cg_doc.add_concepts([simple_concept])
+            # Add all default concepts for a richer fast extraction
+            cg_doc.add_concepts(self.default_concepts)
             
             # Quick extraction with timeout
+            # This will attempt to extract all concepts defined in self.default_concepts
             extracted_doc = self.llm.extract_concepts_from_document(cg_doc)
             
             # Process results

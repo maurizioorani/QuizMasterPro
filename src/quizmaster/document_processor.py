@@ -9,7 +9,10 @@ import re
 import logging
 import json
 import tiktoken
-from contextgem import Document as ContextGemDocument, DocumentLLM, StringConcept, Aspect
+from contextgem import Document as ContextGemDocument, DocumentLLM, StringConcept, Aspect, NumericalConcept, DateConcept
+import requests
+from typing import Optional # Added for QuizConfig type hint
+from .config import QuizConfig # Added for QuizConfig type hint
 
 # Configure logging to suppress pdfminer warnings
 pdfminer_logger = logging.getLogger('pdfminer')
@@ -21,43 +24,130 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocumentProcessor:
-    def __init__(self, persist_directory: str = "documents"):
+    def __init__(self, persist_directory: str = "documents", config: Optional[QuizConfig] = None):
         self.supported_formats = ['pdf', 'docx', 'txt', 'html']
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
+        self.config = config  # Store the passed config
         
-        # Initialize ContextGem LLM
-        self.contextgem_llm = None
-        self.current_model = "mistral:7b"  # Default to local model
+        self.contextgem_llm: Optional[DocumentLLM] = None
+        self._initialize_contextgem_llm() # Initialize ContextGem LLM
         
-        # Define model lists
-        self.openai_models = [
-            "gpt-4.1-nano",
-            "gpt-4o-mini"
-        ]
-        self.ollama_models = [
-            "llama3.3:8b",
-            "mistral:7b",
-            "deepseek-coder:6.7b",
-            "deepseek-r1:latest"
-        ]
-        self.available_models = self.openai_models + self.ollama_models
-        
-        # Simplified chunking settings for ContextGem
-        self.max_chunk_size = 8000  # ContextGem can handle larger chunks efficiently
+        # Simplified chunking settings
+        self.max_chunk_size = 8000
         self.encoding = tiktoken.get_encoding("cl100k_base")
 
-    def get_current_model(self):
-        """Return the currently selected model"""
-        return self.current_model
+        # Define default concepts for extraction if ContextGem is used
+        # Simplified for testing JSON output with smaller models
+        self.default_concepts_for_cg = [
+            StringConcept(name="Main Topic", description="Primary topic or subject of the document", singular_occurrence=True, add_references=False),
+            StringConcept(name="Document Type", description="Type or category of the document (e.g., report, article, manual)", singular_occurrence=True, add_references=False),
+            # StringConcept(name="Key Arguments", description="Main arguments or theses presented", singular_occurrence=False, add_references=False),
+            # StringConcept(name="Conclusions", description="Main conclusions or outcomes reported", singular_occurrence=False, add_references=False),
+            # StringConcept(name="Technical Terms", description="Specific technical terms or jargon used", singular_occurrence=False, add_references=False),
+            # StringConcept(name="Key People", description="Important individuals mentioned", singular_occurrence=False, add_references=False),
+            # StringConcept(name="Key Organizations", description="Important organizations or entities mentioned", singular_occurrence=False, add_references=False),
+            # DateConcept(name="Key Dates", description="Significant dates or time periods mentioned", singular_occurrence=False, add_references=False),
+        ]
 
-    def set_model(self, model_name: str):
-        """Set the current model for document processing"""
-        if model_name not in self.available_models:
-            raise ValueError(f"Model {model_name} not in available models")
+    def _initialize_contextgem_llm(self):
+        """Initialize ContextGem DocumentLLM instance, preferring UI selected model if OpenAI."""
+        try:
+            openai_api_key = os.environ.get("OPENAI_API_KEY")
+            anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+            # Priority 1: Use globally selected OpenAI model if available and an API key is present
+            if self.config and self.config.current_model and self.config.current_model in self.config.openai_models:
+                if openai_api_key:
+                    cg_model_name = self.config.current_model
+                    if not cg_model_name.startswith("openai/"):
+                        # Ensure the model name is prefixed with 'openai/' for ContextGem
+                        cg_model_name = f"openai/{cg_model_name}"
+                    
+                    self.contextgem_llm = DocumentLLM(model=cg_model_name, api_key=openai_api_key)
+                    logger.info(f"DocumentProcessor using UI selected OpenAI model '{cg_model_name}' for ContextGem.")
+                    return
+                else:
+                    logger.error(f"DocumentProcessor: UI selected OpenAI model {self.config.current_model} but OPENAI_API_KEY not found. Cannot use this model.")
+                    # Do not proceed to Ollama if an OpenAI model was explicitly chosen but key is missing.
+                    # Let it fall through to the end where self.contextgem_llm might remain None or be set by other fallbacks if any.
+                    # For now, let's ensure it doesn't pick Ollama if OpenAI was the intent but failed due to key.
+                    # The final fallbacks (hardcoded OpenAI/Anthropic) will also fail if keys are missing.
+                    # The most robust here is to set to None and return, letting the calling code handle no LLM.
+                    self.contextgem_llm = None
+                    logger.warning("DocumentProcessor: ContextGem LLM set to None due to missing API key for selected OpenAI model.")
+                    return # Explicitly stop further model search if user intended OpenAI but key is missing
+
+            # Priority 2: Try Ollama
+            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            try:
+                response = requests.get(f"{ollama_base_url}/api/tags", timeout=2)
+                if response.status_code == 200:
+                    models_data = response.json()
+                    available_ollama_models = [model['name'] for model in models_data.get('models', [])]
+                    logger.info(f"DocumentProcessor: Available local Ollama models: {available_ollama_models}")
+                    
+                    selected_ollama_model = None # Ensure it's reset
+                    ui_selected_model = self.config.current_model if self.config else None
+                    logger.info(f"DocumentProcessor: UI selected model (config.current_model): {ui_selected_model}")
+
+                    # Check if UI selected model is an Ollama model and is available
+                    if ui_selected_model and ui_selected_model not in self.config.openai_models and ui_selected_model in available_ollama_models:
+                        selected_ollama_model = ui_selected_model
+                        logger.info(f"DocumentProcessor: UI selected Ollama model '{selected_ollama_model}' is available locally.")
+                    else:
+                        if ui_selected_model and ui_selected_model not in self.config.openai_models:
+                            logger.info(f"DocumentProcessor: UI selected Ollama model '{ui_selected_model}' is NOT available locally or not an Ollama model. Checking preferred list.")
+                        # Fallback to preferred Ollama models
+                        preferred_ollama_models = ["mistral:7b", "qwen2.5:7b", "llama3.3:8b", "deepseek-coder:6.7b"]
+                        for model in preferred_ollama_models:
+                            if model in available_ollama_models:
+                                selected_ollama_model = model
+                                logger.info(f"DocumentProcessor: Found preferred Ollama model '{selected_ollama_model}' locally.")
+                                break
+                        if not selected_ollama_model and available_ollama_models:
+                            selected_ollama_model = available_ollama_models[0]
+                            logger.info(f"DocumentProcessor: Using first available Ollama model '{selected_ollama_model}' locally.")
+                    
+                    if selected_ollama_model:
+                        self.contextgem_llm = DocumentLLM(model=f"ollama/{selected_ollama_model}", api_base=ollama_base_url)
+                        logger.info(f"DocumentProcessor using Ollama model '{selected_ollama_model}' for ContextGem.")
+                        return
+            except Exception as e:
+                logger.info(f"DocumentProcessor: Ollama not available or error selecting model: {e}")
+
+            # Priority 3: Fallback to hardcoded OpenAI model if key exists (and UI model wasn't OpenAI or key was missing for it)
+            if openai_api_key:
+                self.contextgem_llm = DocumentLLM(model="openai/gpt-4o-mini", api_key=openai_api_key)
+                logger.info("DocumentProcessor using fallback OpenAI model 'gpt-4o-mini' for ContextGem.")
+                return
             
-        self.current_model = model_name
-        logger.info(f"Model set to: {model_name} (using optimized direct extraction)")
+            # Priority 4: Fallback to Anthropic
+            if anthropic_api_key:
+                self.contextgem_llm = DocumentLLM(model="anthropic/claude-3-5-sonnet", api_key=anthropic_api_key)
+                logger.info("DocumentProcessor using fallback Anthropic model 'claude-3-5-sonnet' for ContextGem.")
+                return
+
+            logger.warning("DocumentProcessor: ContextGem LLM could not be initialized. No suitable model configuration found. Concept extraction might be limited.")
+            self.contextgem_llm = None
+
+        except Exception as e:
+            logger.error(f"DocumentProcessor: Failed to initialize ContextGem LLM: {e}", exc_info=True)
+            self.contextgem_llm = None
+
+    def update_llm_configuration(self):
+        """
+        Re-initializes the ContextGem DocumentLLM instance based on the current
+        configuration. This should be called if the global model config changes.
+        """
+        logger.info("DocumentProcessor attempting to update LLM configuration for ContextGem.")
+        if not self.config:
+            logger.warning("DocumentProcessor has no config set; LLM re-initialization might use defaults.")
+        self._initialize_contextgem_llm()
+    
+    # get_current_model and set_model are removed as model selection for ContextGem
+    # is handled during DocumentLLM initialization or should be managed by a central LLMManager if shared.
+    # For now, DocumentProcessor uses its initialized ContextGem LLM.
 
     def count_tokens(self, text: str) -> int:
         """Count approximate tokens in text."""
@@ -94,286 +184,101 @@ class DocumentProcessor:
         
         return chunks if chunks else [text]
 
-    def extract_concepts_with_direct_llm(self, text: str, filename: str, file_format: str) -> List[Dict]:
-        """Extract concepts using direct LLM calls - fast and reliable."""
-        try:
-            logger.info(f"Starting optimized concept extraction for {filename}")
-            
-            # Validate input
-            if not isinstance(text, str) or not text.strip():
-                logger.warning("Empty or invalid text provided")
-                return []
-            
-            # Only set a default model if absolutely no model has been set
-            # This preserves the user's explicit model selection from the UI
-            if not self.current_model:
-                # Try to get a reasonable default only if we truly have no model
-                try:
-                    # Test if Ollama is available for local models
-                    response = requests.get("http://localhost:11434/api/tags", timeout=2)
-                    if response.status_code == 200:
-                        # Default to a stable local model only as absolute fallback
-                        self.current_model = "mistral:7b"
-                        logger.warning("No model selected by user, defaulting to mistral:7b. Please select a model in the UI.")
-                    else:
-                        raise requests.RequestException("Ollama not responding")
-                except Exception:
-                    # Fallback to OpenAI if Ollama not available and no local model set
-                    if os.environ.get("OPENAI_API_KEY"):
-                        self.current_model = "gpt-4o-mini"
-                        logger.warning("No local models available and no model selected, defaulting to OpenAI: gpt-4o-mini")
-                    else:
-                        # Last resort - but this should rarely happen with proper UI integration
-                        self.current_model = "mistral:7b"
-                        logger.error("No model available and no API key. Defaulting to mistral:7b (may fail)")
-            
-            logger.info(f"Using model: {self.current_model}")
-            
-            # Use direct LLM call with optimized prompt
-            return self._extract_concepts_fast(text, filename, file_format)
-            
-        except Exception as e:
-            logger.error(f"Concept extraction failed: {str(e)}")
-            # Try fallback with different approach
+    def extract_concepts(self, text: str, filename: str, file_format: str) -> List[Dict]:
+        """Extract concepts, trying ContextGem first, then a direct LLM fallback."""
+        if not isinstance(text, str) or not text.strip():
+            logger.warning("Empty or invalid text provided for concept extraction.")
+            return []
+
+        if not self.contextgem_llm:
+            logger.warning("ContextGem LLM not initialized for primary extraction path. Attempting direct fallback.")
+            # Try fallback directly if ContextGem LLM isn't even set up
             try:
-                logger.info("Trying fallback concept extraction")
-                return self._fallback_extract_basic(text, filename, file_format)
+                concepts = self._fallback_extract_basic(text, filename, file_format)
+                if concepts:
+                    return concepts
             except Exception as fallback_error:
-                logger.error(f"Fallback extraction also failed: {str(fallback_error)}")
-                return []
+                logger.error(f"Initial fallback extraction failed: {str(fallback_error)}", exc_info=True)
+            return self._generate_default_concepts(filename, file_format) # Last resort
 
-    def _extract_concepts_fast(self, text: str, filename: str, file_format: str) -> List[Dict]:
-        """Fast concept extraction using optimized direct LLM calls."""
+        # Try ContextGem first
+        logger.info(f"Attempting concept extraction with ContextGem for {filename}...")
+        contextgem_concepts = None
         try:
-            from litellm import completion
-            
-            # First, let's extract a short summary to better understand the document
-            summary_prompt = f"""Provide a ONE PARAGRAPH summary of what this document is about:
+            contextgem_concepts = self._extract_concepts_contextgem(text, filename, file_format)
+        except Exception as e: # Catch exceptions from within _extract_concepts_contextgem if any slip through its own try/except
+            logger.error(f"Exception during _extract_concepts_contextgem call for {filename}: {str(e)}", exc_info=True)
+            contextgem_concepts = None # Ensure it's None to trigger fallback
 
-{text[:2000]}
-
-Summary (max 3 sentences):"""
-
-            # Configure for the current model
-            if self.current_model in self.ollama_models:
-                model_name = f"ollama/{self.current_model}"
-                api_base = "http://localhost:11434"
+        if contextgem_concepts is not None and len(contextgem_concepts) > 0: # Check for None and also if it returned an empty list explicitly (meaning it ran but found nothing, which is different from failing)
+            logger.info(f"Successfully extracted {len(contextgem_concepts)} concepts using ContextGem for {filename}.")
+            return contextgem_concepts
+        
+        # If ContextGem returned None (signaling failure/no usable concepts) or an empty list (if we decide empty list also means try fallback)
+        logger.warning(f"ContextGem did not yield usable concepts for {filename}. Attempting direct LLM fallback.")
+        try:
+            fallback_concepts = self._fallback_extract_basic(text, filename, file_format)
+            if fallback_concepts: # Check if fallback actually returned something
+                logger.info(f"Successfully extracted {len(fallback_concepts)} concepts using fallback for {filename}.")
+                return fallback_concepts
             else:
-                model_name = self.current_model
-                api_base = None
-                
-            # Get document summary first
-            try:
-                summary_response = completion(
-                    model=model_name,
-                    messages=[{"role": "user", "content": summary_prompt}],
-                    api_base=api_base,
-                    max_tokens=200,
-                    temperature=0.1
-                )
-                document_summary = summary_response.choices[0].message.content.strip()
-            except Exception as e:
-                logger.warning(f"Failed to get document summary: {str(e)}")
-                document_summary = "Unknown document content"
+                logger.warning(f"Fallback extraction also yielded no concepts for {filename}.")
+        except Exception as fallback_error:
+            logger.error(f"Fallback extraction failed for {filename}: {str(fallback_error)}", exc_info=True)
+        
+        # If all else fails, generate default concepts
+        logger.warning(f"All extraction methods failed for {filename}. Generating default concepts.")
+        return self._generate_default_concepts(filename, file_format)
+
+    def _extract_concepts_contextgem(self, text: str, filename: str, file_format: str) -> Optional[List[Dict]]:
+        """Core concept extraction using ContextGem library. Returns None if ContextGem fails to produce valid/any concepts."""
+        if not self.contextgem_llm:
+            logger.error("ContextGem LLM is None in _extract_concepts_contextgem. Cannot proceed.")
+            return None # Signal failure
             
-            # Now create a more informed concept extraction prompt using the summary
-            if self.current_model in self.ollama_models:
-                # Improved prompt for Ollama models with clearer instructions
-                prompt = f"""Based on this document summary: "{document_summary}"
+        logger.info(f"Using ContextGem LLM ({self.contextgem_llm.model}) for concept extraction with ContextGem library.")
+        
+        cg_doc = ContextGemDocument(raw_text=text)
+        cg_doc.add_concepts(self.default_concepts_for_cg)
 
-Extract 6-8 key topics from this document. Focus ONLY on the knowledge domains, subjects, and concepts covered.
+        try:
+            self.contextgem_llm.extract_concepts_from_document(cg_doc)
 
-Document content (excerpt):
-{text[:3000]}
-
-FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
-1. [First subject domain or concept] 
-2. [Second subject domain or concept]
-3. [Third subject domain or concept]
-...
-
-Example good topics:
-- Machine Learning Algorithms
-- Data Preprocessing Techniques
-- Neural Network Architecture
-- Web Security Fundamentals
-- JavaScript Frameworks
-- Database Normalization
-- Literary Analysis Methods
-
-DO NOT mention document format or features. ONLY extract actual knowledge topics."""
-            else:
-                # Completely redesigned prompt for OpenAI models with two-stage extraction
-                prompt = f"""This document is about: "{document_summary}"
-
-You are an expert knowledge extractor. Your task is to identify the MAIN KNOWLEDGE DOMAINS and SPECIFIC CONCEPTS covered in this document.
-
-Document content (excerpt):
-{text[:3500]}
-
-Approach this in 2 steps:
-1) First, identify the primary knowledge domains (subjects) in this document
-2) For each domain, extract specific concepts that are discussed
-
-FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
-DOMAIN: [knowledge area 1]
-- [specific concept 1.1]
-- [specific concept 1.2]
-
-DOMAIN: [knowledge area 2]
-- [specific concept 2.1]
-- [specific concept 2.2]
-
-Example domains: Computer Science, Quantum Physics, Financial Analysis
-Example concepts: Binary Search Trees, Wave-Particle Duality, Risk Assessment Methods
-
-STRICT REQUIREMENTS:
-- Extract ONLY real knowledge topics that appear in the text
-- NEVER mention document format (PDF, DOCX, etc.) 
-- NEVER include document features (images, tables, headers)
-- NEVER include metadata (author, file size, page count)
-- Focus EXCLUSIVELY on the actual subject matter knowledge
-- Include specialized terminology from the document
-- Extract 3-5 domains with 2-3 concepts each
-
-The extracted topics will be used for creating quiz questions, so they must accurately represent the document's ACTUAL SUBJECT MATTER."""
-
-            # Configure for the current model
-            if self.current_model in self.ollama_models:
-                model_name = f"ollama/{self.current_model}"
-                api_base = "http://localhost:11434"
-                logger.info(f"Using Ollama model: {self.current_model}")
-            else:
-                model_name = self.current_model
-                api_base = None
-                logger.info(f"Using OpenAI model: {self.current_model}")
+            extracted_concepts_list = []
+            if hasattr(cg_doc, 'concepts') and cg_doc.concepts:
+                for concept_obj in cg_doc.concepts:
+                    if hasattr(concept_obj, 'name') and hasattr(concept_obj, 'extracted_items') and concept_obj.extracted_items:
+                        for item in concept_obj.extracted_items:
+                            item_value = getattr(item, 'value', str(item))
+                            if item_value and str(item_value).strip():
+                                extracted_concepts_list.append({
+                                    "content": str(item_value),
+                                    "concept_name": concept_obj.name,
+                                    "type": "concept",
+                                    "source_sentence": str(item_value)[:150] + "..." if len(str(item_value)) > 150 else str(item_value),
+                                    "metadata": {
+                                        "filename": filename,
+                                        "format": file_format,
+                                        "extraction_method": "contextgem_library"
+                                    }
+                                })
             
-            # Log before sending request
-            logger.info(f"Sending extraction request to {model_name}")
-            
-            response = completion(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                api_base=api_base,
-                max_tokens=1000,  # Increased for more complete responses
-                temperature=0.2  # Low temperature for consistent results
-            )
-            
-            response_text = response.choices[0].message.content
-            logger.info(f"Got response: {response_text[:100]}...")
-            
-            # Use appropriate parser based on model type
-            if self.current_model in self.ollama_models:
-                return self._parse_ollama_response(response_text, filename, file_format)
-            else:
-                return self._parse_domain_concepts_response(response_text, filename, file_format)
-            
+            if not extracted_concepts_list:
+                logger.warning(f"ContextGem ran but extracted no valid concepts for {filename}.")
+                return None # Signal that ContextGem produced no usable output
+
+            logger.info(f"ContextGem successfully extracted {len(extracted_concepts_list)} concept items for {filename}.")
+            return extracted_concepts_list
+
         except Exception as e:
-            logger.error(f"Fast extraction failed: {str(e)}")
-            # Create some default concepts based on filename
-            return self._generate_default_concepts(filename, file_format)
+            # This catches errors during the ContextGem call itself (e.g., API errors, internal ContextGem errors)
+            logger.error(f"Exception during ContextGem's extract_concepts_from_document for {filename}: {str(e)}", exc_info=True)
+            return None # Signal failure
 
-    def _parse_domain_concepts_response(self, response_text: str, filename: str, file_format: str) -> List[Dict]:
-        """Parse the domain-based concept extraction response."""
-        concepts = []
-        lines = response_text.split('\n')
-        
-        current_domain = "General"
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Check for domain headers
-            if line.startswith("DOMAIN:"):
-                current_domain = line.replace("DOMAIN:", "").strip()
-                continue
-                
-            # Check for concept bullet points
-            if line.startswith("-") or line.startswith("•"):
-                concept_text = line.lstrip("-•").strip()
-                if len(concept_text) > 3:  # Ensure concept has meaningful content
-                    concepts.append({
-                        "content": concept_text,
-                        "concept_name": current_domain,
-                        "type": "concept",
-                        "source_sentence": concept_text,
-                        "metadata": {
-                            "filename": filename,
-                            "format": file_format,
-                            "extraction_method": "domain_based"
-                        }
-                    })
-        
-        # Fallback for numbered lists if domain format wasn't used
-        if not concepts:
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                # Try to match numbered items (e.g., "1. Machine Learning")
-                if re.match(r'^\d+\.\s', line):
-                    concept_text = re.sub(r'^\d+\.\s', '', line).strip()
-                    if len(concept_text) > 3:
-                        concepts.append({
-                            "content": concept_text,
-                            "concept_name": "Key Topic",
-                            "type": "concept",
-                            "source_sentence": concept_text,
-                            "metadata": {
-                                "filename": filename,
-                                "format": file_format,
-                                "extraction_method": "numbered_list"
-                            }
-                        })
-        
-        return concepts
-        
-    def _parse_ollama_response(self, response_text: str, filename: str, file_format: str) -> List[Dict]:
-        """Parse the response from Ollama models."""
-        concepts = []
-        lines = response_text.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Match numbered items (e.g., "1. Machine Learning")
-            if re.match(r'^\d+\.\s', line):
-                concept_text = re.sub(r'^\d+\.\s', '', line).strip()
-                if len(concept_text) > 3:  # Ensure concept has meaningful content
-                    concepts.append({
-                        "content": concept_text,
-                        "concept_name": "Subject Matter",
-                        "type": "concept",
-                        "source_sentence": concept_text,
-                        "metadata": {
-                            "filename": filename,
-                            "format": file_format,
-                            "extraction_method": "ollama_direct"
-                        }
-                    })
-            # Match bullet points
-            elif line.startswith("-") or line.startswith("•"):
-                concept_text = line.lstrip("-•").strip()
-                if len(concept_text) > 3:  # Ensure concept has meaningful content
-                    concepts.append({
-                        "content": concept_text,
-                        "concept_name": "Subject Matter",
-                        "type": "concept",
-                        "source_sentence": concept_text,
-                        "metadata": {
-                            "filename": filename,
-                            "format": file_format,
-                            "extraction_method": "ollama_direct"
-                        }
-                    })
-        
-        return concepts
-        
+    # _parse_domain_concepts_response, _parse_ollama_response, and _parse_fast_response
+    # are removed as they were specific to the old direct LLM call approach.
+    # ContextGem's output is handled directly in _extract_concepts_contextgem.
+
     def _generate_default_concepts(self, filename: str, file_format: str) -> List[Dict]:
         """Generate default concepts based on filename when extraction fails."""
         # Extract meaningful terms from filename
@@ -411,55 +316,7 @@ The extracted topics will be used for creating quiz questions, so they must accu
         
         return concepts
 
-    def _parse_fast_response(self, response_text: str, filename: str, file_format: str) -> List[Dict]:
-        """Parse the fast extraction response."""
-        concepts = []
-        lines = response_text.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Parse numbered format: "1. TYPE: content"
-            if '. ' in line and ':' in line:
-                try:
-                    # Extract number, type, and content
-                    parts = line.split('. ', 1)
-                    if len(parts) == 2:
-                        type_content = parts[1]
-                        if ':' in type_content:
-                            type_part, content = type_content.split(':', 1)
-                            type_part = type_part.strip().upper()
-                            content = content.strip()
-                            
-                            # Map types
-                            if type_part == 'DEFINITION':
-                                concept_type = 'Key Definition'
-                            elif type_part == 'IDEA':
-                                concept_type = 'Main Idea'
-                            elif type_part == 'FACT':
-                                concept_type = 'Important Fact'
-                            else:
-                                concept_type = 'Important Fact'
-                            
-                            # Only add if content is substantial
-                            if len(content) > 15:
-                                concepts.append({
-                                    "content": content,
-                                    "concept_name": concept_type,
-                                    "type": "concept",
-                                    "source_sentence": content[:100] + "...",
-                                    "metadata": {
-                                        "filename": filename,
-                                        "format": file_format,
-                                        "extraction_method": "optimized_direct"
-                                    }
-                                })
-                except Exception:
-                    continue
-        
-        return concepts
+    # _parse_fast_response removed.
 
     def _fallback_extract_basic(self, text: str, filename: str, file_format: str) -> List[Dict]:
         """Basic concept extraction fallback using direct LLM calls."""
@@ -469,34 +326,61 @@ The extracted topics will be used for creating quiz questions, so they must accu
             logger.info(f"Using fallback extraction for {filename}")
             
             # Use a simpler, more direct prompt
-            prompt = f"""Extract key concepts from the following text. For each concept, provide the concept content and categorize it.
+            prompt = f"""You are an expert text analyst. Extract key concepts from the following text.
+For each concept, provide its type, content, and a brief source/context from the text.
+YOU MUST FOLLOW THIS FORMAT EXACTLY FOR EACH CONCEPT:
+CONCEPT_TYPE: [Choose one: Key Definition, Main Idea, Important Fact, Technical Term, Key Person, Key Organization, Key Date]
+CONTENT: [The extracted concept, definition, idea, fact, term, person, organization, or date]
+SOURCE: [A very brief quote or reference from the text indicating where this was found]
 
 Text:
-{text}
+{text[:15000]} # Limit text length for fallback prompt
 
-Please identify and extract concepts in this exact format:
+Example:
 CONCEPT_TYPE: Key Definition
-CONTENT: [actual definition or term]
-SOURCE: [brief context]
+CONTENT: Photosynthesis is the process by which green plants use sunlight, water, and carbon dioxide to create their own food.
+SOURCE: "Photosynthesis is the process by which green plants use sunlight..."
 
-CONCEPT_TYPE: Main Idea  
-CONTENT: [main concept or theme]
-SOURCE: [brief context]
+Extract 5-10 concepts total. Ensure each concept block starts with 'CONCEPT_TYPE:'."""
 
-CONCEPT_TYPE: Important Fact
-CONTENT: [significant fact or information]
-SOURCE: [brief context]
+            model_name_for_fallback = None
+            api_base_for_fallback = None
+            is_ollama_fallback = False
 
-Extract 5-10 concepts total."""
-
-            # Determine model configuration
-            if self.current_model in self.ollama_models:
-                model_name = f"ollama/{self.current_model}"
-                api_base = "http://localhost:11434"
+            if self.contextgem_llm and self.contextgem_llm.model:
+                # Prefer the model already initialized for ContextGem
+                full_model_name = self.contextgem_llm.model
+                if full_model_name.startswith("ollama/"):
+                    model_name_for_fallback = full_model_name
+                    api_base_for_fallback = self.contextgem_llm.api_base or "http://localhost:11434"
+                    is_ollama_fallback = True
+                else: # Assuming OpenAI or other direct model names
+                    model_name_for_fallback = full_model_name
+                    api_base_for_fallback = self.contextgem_llm.api_base
             else:
-                model_name = self.current_model
-                api_base = None
+                # Fallback if contextgem_llm wasn't initialized or has no model
+                logger.warning("ContextGem LLM not available for fallback, attempting direct default.")
+                # Attempt to use a default Ollama model if server is reachable
+                try:
+                    ollama_check_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                    requests.get(f"{ollama_check_url}/api/tags", timeout=1) # Quick check
+                    model_name_for_fallback = "ollama/mistral:7b" # A common default
+                    api_base_for_fallback = ollama_check_url
+                    is_ollama_fallback = True
+                    logger.info(f"Using default Ollama model for fallback: {model_name_for_fallback}")
+                except Exception:
+                    if os.environ.get("OPENAI_API_KEY"):
+                        model_name_for_fallback = "gpt-4o-mini" # OpenAI default
+                        logger.info(f"Using default OpenAI model for fallback: {model_name_for_fallback}")
+                    else:
+                        logger.error("No usable model configuration for fallback extraction.")
+                        return []
+            
+            if not model_name_for_fallback:
+                logger.error("Could not determine a model for fallback extraction.")
+                return []
 
+            logger.info(f"Fallback extraction using model: {model_name_for_fallback}")
             response = completion(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
@@ -569,8 +453,10 @@ Extract 5-10 concepts total."""
         file_extension = os.path.splitext(filename)[1][1:].lower()
         return file_extension in self.supported_formats
 
-    def process(self, content: bytes, source: str, custom_filename: str = None) -> Dict:
-        """Main processing method - simplified and optimized."""
+    def process(self, content: bytes, source: str, custom_filename: str = None,
+                stop_signal_check: Optional[callable] = None,
+                chunk_processed_callback: Optional[callable] = None) -> Dict:
+        """Main processing method - simplified and optimized, with stop signal and progress callback."""
         logger.info(f"Processing document: {source}")
         
         try:
@@ -626,15 +512,42 @@ Extract 5-10 concepts total."""
                 raise ValueError("Document appears to be empty or could not be processed.")
             
             # Log processing stats
-            token_count = self.count_tokens(text)
-            word_count = len(text.split())
-            logger.info(f"Document stats - Tokens: {token_count}, Words: {word_count}")
+            token_count = self.count_tokens(text) # Full document token count
+            word_count = len(text.split()) # Full document word count
+            logger.info(f"Document stats - Full Tokens: {token_count}, Full Words: {word_count}")
+
+            chunks = self.smart_chunk_text(text)
+            logger.info(f"Document split into {len(chunks)} chunk(s) for concept extraction.")
+            total_chunks = len(chunks)
             
-            # Extract concepts using optimized direct method
-            concepts = self.extract_concepts_with_direct_llm(text, filename, file_format)
+            all_extracted_concepts = []
+            for i, chunk in enumerate(chunks):
+                if stop_signal_check and stop_signal_check():
+                    logger.info("Document processing stopped by user signal during chunk processing.")
+                    break # Exit the chunk processing loop
+
+                logger.info(f"Processing chunk {i+1}/{total_chunks} for concepts...")
+                chunk_concepts = self.extract_concepts(chunk, filename, file_format) # Pass chunk here
+                if chunk_concepts:
+                    all_extracted_concepts.extend(chunk_concepts)
+                
+                processed_count = i + 1
+                logger.info(f"Chunk {processed_count}/{total_chunks} yielded {len(chunk_concepts if chunk_concepts else [])} concept items.")
+                if chunk_processed_callback:
+                    chunk_processed_callback(processed_count, total_chunks)
+            
+            # Remove duplicate concepts that might arise from chunking (simple check based on content and name)
+            unique_concepts_dict = {}
+            for concept in all_extracted_concepts:
+                key = (concept.get("concept_name"), concept.get("content"))
+                if key not in unique_concepts_dict:
+                    unique_concepts_dict[key] = concept
+            
+            concepts = list(unique_concepts_dict.values())
+            logger.info(f"Total unique concept items extracted from all chunks: {len(concepts)}")
             
             # Create metadata compatible with Streamlit app
-            paragraphs = text.split('\n\n')
+            paragraphs = text.split('\n\n') # Based on full text
             metadata = {
                 'total_words': word_count,
                 'total_tokens': token_count,

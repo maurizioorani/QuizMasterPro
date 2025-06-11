@@ -214,16 +214,34 @@ class InsightsGenerator:
             # Analyze document structure and content
             document_analysis = {
                 "document_type": self._extract_concept_value(extracted_concepts, 'Document Type'),
-                "main_subject": self._extract_concept_value(extracted_concepts, 'Main Subject'),
-                "key_topics": self._extract_concept_values(extracted_concepts, 'Key Topics'),
+                "main_subject": self._extract_concept_value(extracted_concepts, 'Main Topic'), # Changed from Main Subject to Main Topic
+                "key_topics": self._extract_concept_values(extracted_concepts, 'Key Topics'), # This might come from an Aspect
+                "key_arguments": self._extract_concept_values(extracted_concepts, 'Key Arguments'),
+                "conclusions": self._extract_concept_values(extracted_concepts, 'Conclusions'),
+                "technical_terms_mentioned": self._extract_concept_values(extracted_concepts, 'Technical Terms'),
+                "key_people_mentioned": self._extract_concept_values(extracted_concepts, 'Key People'),
+                "key_organizations_mentioned": self._extract_concept_values(extracted_concepts, 'Key Organizations'),
+                "locations_mentioned": self._extract_concept_values(extracted_concepts, 'Locations'),
+                "key_dates_mentioned": self._extract_concept_values(extracted_concepts, 'Key Dates'), # Assuming DateConcept stores them as list of strings
+                "key_figures_mentioned": self._extract_concept_values(extracted_concepts, 'Key Figures'), # Assuming NumericalConcept stores them as list of strings
                 "technical_level": self._assess_technical_level(document),
                 "content_density": self._assess_content_density(document),
-                "concept_coverage": len(extracted_concepts),
-                "aspect_coverage": len(extracted_aspects)
+                "concept_coverage": len(extracted_concepts), # Number of top-level concept types extracted
+                "aspect_coverage": len(extracted_aspects)  # Number of top-level aspects extracted
             }
             
-            # Get summary information
-            summary_items = extracted_aspects.get('Summary', {}).get('items', [])
+            # Get summary information from aspects if available
+            # The 'Key Information' aspect might contain 'Summary Points'
+            summary_items = []
+            key_info_aspect = extracted_aspects.get('Key Information', {})
+            if key_info_aspect:
+                summary_items = key_info_aspect.get('concepts', {}).get('Summary Points', {}).get('items', [])
+            
+            # If not found in aspects, try a direct concept if it exists
+            if not summary_items:
+                 summary_concept_items = extracted_concepts.get('Summary Points', {}).get('items', [])
+                 summary_items = [item.get('value') for item in summary_concept_items if item.get('value')]
+
             key_points = [item.get('value', '') for item in summary_items[:5]]  # Top 5 key points
             
             return {
@@ -396,58 +414,60 @@ As an expert educational analyst, provide a comprehensive learning insights repo
 {context_info}
 
 CRITICAL INSTRUCTIONS:
-- ALWAYS reference the specific questions answered in your analysis
-- Use the actual question content and user responses provided above
-- Be specific about what topics were covered and how the user performed on each
-- If accuracy rate is 85% or higher, this indicates EXCELLENT performance that should be celebrated
-- If accuracy rate is 100%, this indicates PERFECT performance - focus on congratulating and suggesting advanced challenges
-- If accuracy rate is 70-84%, this indicates GOOD performance with room for refinement
-- If accuracy rate is below 70%, then focus on improvement areas
+- ALWAYS reference the specific questions answered in your analysis.
+- Use the actual question content and user responses provided.
+- Be specific about what topics, key arguments, technical terms, people, or dates were covered and how the user performed on each.
+- If accuracy rate is 85% or higher, this indicates EXCELLENT performance that should be celebrated.
+- If accuracy rate is 100%, this indicates PERFECT performance - focus on congratulating and suggesting advanced challenges.
+- If accuracy rate is 70-84%, this indicates GOOD performance with room for refinement.
+- If accuracy rate is below 70%, then focus on improvement areas.
 
 Please structure your response with these sections:
 
 ## 📊 PERFORMANCE OVERVIEW
-- Reference the SPECIFIC QUESTIONS answered and performance on each
-- Mention the actual topics/concepts that were tested
-- If accuracy is 90%+, emphasize EXCELLENT performance with specific examples
-- If accuracy is 100%, celebrate PERFECT performance citing the actual questions mastered
-- Highlight the most significant findings based on actual quiz content
+- Reference the SPECIFIC QUESTIONS answered and performance on each.
+- Mention the actual topics/concepts, including any specific 'Technical Terms', 'Key Arguments', 'Key People', or 'Key Dates' that were tested.
+- If accuracy is 90%+, emphasize EXCELLENT performance with specific examples.
+- If accuracy is 100%, celebrate PERFECT performance citing the actual questions mastered.
+- Highlight the most significant findings based on actual quiz content.
 
-## 🎯 LEARNING ANALYSIS  
-- Analyze performance patterns based on the SPECIFIC QUESTION ANALYSIS provided
-- Reference the actual question types and difficulties the user encountered
-- For high performers (85%+), focus on mastery indicators from the specific questions
-- Identify learning style preferences based on actual performance data
-- Assess knowledge retention based on the specific topics covered
+## 🎯 LEARNING ANALYSIS
+- Analyze performance patterns based on the SPECIFIC QUESTION ANALYSIS provided.
+- Reference the actual question types and difficulties the user encountered.
+- Consider if performance varies across different types of extracted information (e.g., good on 'Key Topics' but struggled with 'Technical Terms' or 'Key Dates').
+- For high performers (85%+), focus on mastery indicators from the specific questions.
+- Identify learning style preferences based on actual performance data.
+- Assess knowledge retention based on the specific topics covered.
 
 ## 📈 STRENGTHS & ACHIEVEMENTS
-- Celebrate what the learner did well on SPECIFIC QUESTIONS and topics
-- Reference the actual subject areas where they demonstrated mastery
-- Highlight positive learning indicators from the actual quiz performance
-- For perfect scores, emphasize exceptional understanding of the specific concepts tested
+- Celebrate what the learner did well on SPECIFIC QUESTIONS and topics, including any demonstrated understanding of 'Key Arguments' or 'Conclusions' from the document.
+- Reference the actual subject areas where they demonstrated mastery.
+- Highlight positive learning indicators from the actual quiz performance.
+- For perfect scores, emphasize exceptional understanding of the specific concepts tested.
 
 ## 🔍 IMPROVEMENT OPPORTUNITIES
-- Base recommendations on the SPECIFIC AREAS identified in the analysis
-- For high performers (85%+), suggest ADVANCED challenges in the actual subject areas covered
-- For perfect scores (100%), focus on next-level applications of the specific topics tested
-- For lower performers, identify specific concepts from the quiz that need attention
-- Always maintain encouraging tone while being specific about the content
+- Base recommendations on the SPECIFIC AREAS identified in the analysis.
+- If the document context revealed 'Key Arguments' or 'Technical Terms' and the user struggled with related questions, suggest focused review.
+- For high performers (85%+), suggest ADVANCED challenges in the actual subject areas covered, perhaps involving deeper analysis of the 'Key Arguments' or application of 'Technical Terms'.
+- For perfect scores (100%), focus on next-level applications of the specific topics tested.
+- For lower performers, identify specific concepts, 'Technical Terms', 'Key People', or 'Key Dates' from the quiz that need attention.
+- Always maintain encouraging tone while being specific about the content.
 
 ## 🛠️ PERSONALIZED RECOMMENDATIONS
-- Base all recommendations on the SPECIFIC TOPICS and concepts from the quiz
-- For excellent performance: Suggest advanced applications of the actual subject matter covered
-- For good performance: Suggest deeper exploration of the specific concepts tested
-- For struggling performance: Provide targeted review of the specific areas missed
-- Include both immediate and long-term recommendations tied to the actual content
+- Base all recommendations on the SPECIFIC TOPICS and concepts from the quiz, cross-referencing with extracted 'Key Arguments', 'Technical Terms', etc., from the document context.
+- For excellent performance: Suggest advanced applications of the actual subject matter covered.
+- For good performance: Suggest deeper exploration of the specific concepts tested.
+- For struggling performance: Provide targeted review of the specific areas missed.
+- Include both immediate and long-term recommendations tied to the actual content.
 
 ## 🎓 NEXT STEPS & MOTIVATION
-- Suggest next steps based on the SPECIFIC SUBJECT AREAS covered in the quiz
-- For high achievers: Challenge them with advanced applications of the actual topics
-- For perfect scores: Suggest exploration of related advanced concepts in the same subject area
-- Always provide encouraging guidance that acknowledges their specific achievements
-- Set appropriate difficulty level for next challenges in the same subject domain
+- Suggest next steps based on the SPECIFIC SUBJECT AREAS covered in the quiz.
+- For high achievers: Challenge them with advanced applications of the actual topics.
+- For perfect scores: Suggest exploration of related advanced concepts in the same subject area.
+- Always provide encouraging guidance that acknowledges their specific achievements.
+- Set appropriate difficulty level for next challenges in the same subject domain.
 
-IMPORTANT: Your analysis must be grounded in the specific question content, topics, and performance data provided. Avoid generic statements - always reference the actual quiz content and user performance on specific questions and topics.
+IMPORTANT: Your analysis must be grounded in the specific question content, topics, and performance data provided, as well as the DOCUMENT CONTEXT (like 'Key Arguments', 'Technical Terms'). Avoid generic statements - always reference the actual quiz content and user performance on specific questions and topics.
 """
         
         try:
@@ -488,7 +508,7 @@ IMPORTANT: Your analysis must be grounded in the specific question content, topi
         """Prepare rich context information for LLM prompt"""
         
         basic_metrics = quiz_analysis['basic_metrics']
-        question_analysis = quiz_analysis.get('question_analysis', [])
+        question_analysis_list = quiz_analysis.get('question_analysis', []) # Renamed to avoid conflict
         
         context = f"""
 QUIZ PERFORMANCE DATA:
@@ -496,11 +516,24 @@ QUIZ PERFORMANCE DATA:
 - Accuracy Rate: {basic_metrics['accuracy_rate']}% ({basic_metrics['correct_answers']} out of {basic_metrics['answered_questions']} answered correctly)
 - Completion Rate: {basic_metrics['completion_rate']}%
 
+DOCUMENT CONTEXT:
+- Document Type: {document_context.get('document_analysis', {}).get('document_type', 'N/A')}
+- Main Subject/Topic: {document_context.get('document_analysis', {}).get('main_subject', 'N/A')}
+- Key Topics from Document: {', '.join(document_context.get('document_analysis', {}).get('key_topics', []))}
+- Key Arguments from Document: {', '.join(document_context.get('document_analysis', {}).get('key_arguments', []))}
+- Conclusions from Document: {', '.join(document_context.get('document_analysis', {}).get('conclusions', []))}
+- Technical Terms Mentioned: {', '.join(document_context.get('document_analysis', {}).get('technical_terms_mentioned', []))}
+- Key People Mentioned: {', '.join(document_context.get('document_analysis', {}).get('key_people_mentioned', []))}
+- Key Dates Mentioned: {', '.join(document_context.get('document_analysis', {}).get('key_dates_mentioned', []))}
+
 SPECIFIC QUESTION ANALYSIS:
 """
+        # Append detailed question analysis to context
+        for qa_item in question_analysis_list:
+            context += f"- Q{qa_item['question_id']+1} ({qa_item['type']}, {qa_item['difficulty']}, Topic: {qa_item['topic']}): User answered '{qa_item['user_answer']}', Correct: {qa_item['is_correct']}. Question: {qa_item['question_text']}\n"
         
         # Add specific details about each question
-        for i, question_detail in enumerate(question_analysis[:5]):  # Show up to 5 questions for context
+        for i, question_detail in enumerate(question_analysis_list[:5]):  # Show up to 5 questions for context
             status = "✓ CORRECT" if question_detail['is_correct'] else "✗ INCORRECT"
             context += f"Question {i+1}: {question_detail['question_text'][:80]}...\n"
             context += f"  - User answered: {question_detail['user_answer']}\n"

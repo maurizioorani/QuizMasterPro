@@ -106,10 +106,10 @@ ollama serve
 
 ### Document Processing & Quiz Generation
 **🏆 Recommended Local Models (Ollama):**
-- **`deepseek-r1`** - Advanced reasoning and structured output
-- **`mistral:7b`** - Excellent JSON generation (4.1GB)
-- **`qwen2.5:7b`** - Strong structured output (4.4GB)
-- **`gemma2:9b`** - Reliable instruction following (5.4GB)
+- **`llama3.3:8b`** - Strong general-purpose model
+- **`mistral:7b`** - Efficient, good for JSON generation (4.1GB)
+- **`qwen2.5:7b`** - Strong structured output, multilingual (4.4GB)
+- **`deepseek-coder:6.7b`** - Excellent for code-related tasks and structured output
 
 **☁️ OpenAI Models:**
 - **`gpt-4o-mini`** - Fast and cost-effective
@@ -117,9 +117,9 @@ ollama serve
 - **`gpt-3.5-turbo`** - Balanced performance
 
 ### Model Selection Tips
-- **For document processing**: deepseek-r1, mistral:7b, or gpt-4o-mini work well
-- **For quiz generation**: All models supported with consistent quality
-- **Model synchronization**: Use the same model for both processing and generation for best results
+- **For document processing (concept extraction)**: OpenAI models (e.g., `gpt-4o-mini`) are currently recommended for the most reliable structured data (JSON) extraction when using the ContextGem library integration. Some local models may struggle with consistent JSON output for ContextGem, though the application has fallbacks.
+- **For quiz generation**: All listed models generally provide good quality.
+- **Model synchronization**: Using the same model for both document processing and quiz generation can provide consistency.
 
 ## 🏗️ Architecture
 
@@ -134,7 +134,7 @@ ollama serve
 ```
 
 ### Document Processing with ContextGem
-- **ContextGem Integration**: We leverage ContextGem for advanced document understanding and concept extraction. ContextGem is ideal for this application because it excels at breaking down complex documents into structured, meaningful concepts and aspects, which is crucial for generating targeted and relevant quiz questions. Its ability to identify key definitions, main ideas, and important facts directly supports our goal of transforming documents into personalized learning experiences.
+- **ContextGem Integration**: ContextGem is leveraged for advanced document understanding and concept extraction. This library is ideal for the application as it excels at breaking down complex documents into structured, meaningful concepts and aspects, crucial for generating targeted and relevant quiz questions. Its ability to identify key definitions, main ideas, and important facts directly supports the goal of transforming documents into personalized learning experiences. (Note: For the most reliable concept extraction with ContextGem's JSON parsing, OpenAI models like `gpt-4o-mini` are currently more consistent than some local models.)
 - **Smart Retrieval**: Semantic search based on extracted concepts allows for efficient retrieval of relevant document sections for quiz generation.
 - **Rich Metadata**: Document structure, creation timestamps, and extraction summaries are stored as metadata for comprehensive document management.
 - **Topic Mapping**: Organized concept categories facilitate targeted quiz generation based on specific topics selected by the user.

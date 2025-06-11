@@ -1,13 +1,20 @@
 import streamlit as st
-from document_processor import DocumentProcessor
-from quiz_generator import QuizGenerator
-from database_manager import DatabaseManager
-from vector_manager import VectorManager
 import os
+import sys
 import time
 import re
 from datetime import datetime
 from dotenv import load_dotenv
+
+# Add the src directory to sys.path to allow for absolute imports from quizmaster
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from quizmaster.document_processor import DocumentProcessor
+from quizmaster.quiz_generator import QuizGenerator
+from quizmaster.database_manager import DatabaseManager
+from quizmaster.vector_manager import VectorManager
+from quizmaster.config import QuizConfig # Import QuizConfig
+
 
 # Load environment variables
 load_dotenv()
@@ -25,23 +32,48 @@ def main():
     st.title("📚 QuizMaster Pro - Document to Quiz Converter")
     st.markdown("Transform any document into an interactive quiz using local AI")
 
-    # Initialize processors
+    # Initialize shared QuizConfig in session state if not already present
+    if 'shared_quiz_config' not in st.session_state:
+        st.session_state.shared_quiz_config = QuizConfig()
+    
+    # Use the shared config for all components that need it
+    shared_config = st.session_state.shared_quiz_config
+
+    # Initialize QuizGenerator
+    # The "Always re-initialize" comment from original code is a bit ambiguous with session state.
+    # For now, ensure it uses the shared_config. If it must be new, its internal config will be this shared one.
+    st.session_state.quiz_generator = QuizGenerator(config=shared_config)
+
+    # Initialize DocumentProcessor
     if 'document_processor' not in st.session_state:
-        st.session_state.document_processor = DocumentProcessor()
-    
-    # Always re-initialize QuizGenerator to pick up code changes
-    st.session_state.quiz_generator = QuizGenerator()
-    
-    # Initialize VectorManager for pgvector operations
+        st.session_state.document_processor = DocumentProcessor(config=shared_config)
+    else:
+        # If it exists, ensure its config is the shared one and update its LLM if needed
+        if st.session_state.document_processor.config is not shared_config:
+            st.session_state.document_processor.config = shared_config # Point to the shared config
+        # update_llm_configuration will be called when model is applied via UI button
+        # No need to call it here on every rerun unless config object identity itself changed.
+
+    # Initialize VectorManager
     if 'vector_manager' not in st.session_state:
-        st.session_state.vector_manager = VectorManager()
-    
+        st.session_state.vector_manager = VectorManager(config=shared_config)
+    else:
+        # If it exists, ensure its config is the shared one
+        if st.session_state.vector_manager.config is not shared_config:
+            st.session_state.vector_manager.config = shared_config
+        # update_llm_configuration will be called when model is applied via UI button
+
     if 'processed_content' not in st.session_state:
         st.session_state.processed_content = None
     
     if 'quiz_data' not in st.session_state:
         st.session_state.quiz_data = None
-
+    
+    if 'is_processing' not in st.session_state:
+        st.session_state.is_processing = False
+    
+    if 'stop_processing' not in st.session_state:
+        st.session_state.stop_processing = False
 
     # Sidebar for settings and configuration
     with st.sidebar:
@@ -57,57 +89,98 @@ def main():
 
         # Enhanced model descriptions with clearer status indicators
         MODEL_DESCRIPTIONS = {
-            "llama3.3:8b": "⭐ RECOMMENDED: Meta's Llama 3.3, 8B parameters - Great for both embedding and quiz generation",
-            "mistral:7b": "⭐ RECOMMENDED: Efficient JSON generation (4.1GB) - Well-suited for all tasks",
-            "qwen2.5:7b": "⭐ RECOMMENDED: Strong JSON/structured output, multilingual - Excellent all-purpose model",
-            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Requires API key, handles all tasks efficiently",
-            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Requires API key, optimized for structured output"
+            # Ollama Models (from LLMManager's predefined list)
+            "llama3.3:8b": "⭐ Meta's Llama 3.3 (8B) - Strong general-purpose capabilities",
+            "mistral:7b": "⭐ Mistral (7B) - Efficient, good for JSON generation (4.1GB)",
+            "qwen2.5:7b": "⭐ Qwen 2.5 (7B) - Strong structured output, multilingual (4.4GB)",
+            "deepseek-coder:6.7b": "⭐ DeepSeek Coder (6.7B) - Excellent for code-related tasks and structured output",
+            # Add any other Ollama models from LLMManager's predefined list here if they differ
+
+            # OpenAI Models (from QuizConfig)
+            "gpt-4o-mini": "⚡ OpenAI: GPT-4o Mini - Fast, cost-effective, optimized for structured output",
+            "gpt-4": "⚡ OpenAI: GPT-4 - High-quality, powerful model", # Description for gpt-4
+            "gpt-3.5-turbo": "⚡ OpenAI: GPT-3.5 Turbo - Balanced performance and cost" # Description for gpt-3.5-turbo
         }
         
         # Get current model and local availability
-        current_model = st.session_state.quiz_generator.get_current_model()
-        local_models = st.session_state.quiz_generator.get_local_models()
-        
-        # Create model display options with status indicators
+        current_model = st.session_state.quiz_generator.llm_manager.get_current_model()
+        all_local_models = st.session_state.quiz_generator.llm_manager.get_local_models() # Fetches all from Ollama
+        all_available_models = st.session_state.quiz_generator.llm_manager.get_available_models() # Combined list
+        openai_model_names = st.session_state.quiz_generator.llm_manager.get_openai_models()
+
+        ollama_models_for_display = [m for m in all_available_models if m not in openai_model_names]
+        openai_models_for_display = [m for m in all_available_models if m in openai_model_names]
+
+        # Create model display options with status indicators and headers
         model_options = []
-        for model in st.session_state.quiz_generator.get_available_models():
-            if model.startswith('gpt-'):
-                # OpenAI models
-                status = "⚡ API"
-                if not os.environ.get("OPENAI_API_KEY"):
-                    status += " (API key missing)"
-            else:
-                # Ollama models
-                if model in local_models:
-                    status = "✅ Local"
-                else:
-                    status = "📥 Auto-pull needed"
-                
+        
+        # Ollama Header
+        model_options.append({"name": "##OLLAMA_MODELS_HEADER##", "display": "--- Ollama Local Models ---", "description": "Locally hosted models via Ollama.", "is_header": True})
+        for model in sorted(ollama_models_for_display):
+            status = "📥 Auto-pull needed"
+            if model in all_local_models: # Check against the dynamically fetched list
+                status = "✅ Local"
             model_options.append({
                 "name": model,
                 "display": f"{model} - {status}",
-                "description": MODEL_DESCRIPTIONS.get(model, "No description")
+                "description": MODEL_DESCRIPTIONS.get(model, "No description"),
+                "is_header": False
+            })
+
+        # OpenAI Header
+        model_options.append({"name": "##OPENAI_MODELS_HEADER##", "display": "--- OpenAI API Models ---", "description": "Models accessed via OpenAI API (requires API key).", "is_header": True})
+        for model in sorted(openai_models_for_display):
+            status = "⚡ API"
+            if not os.environ.get("OPENAI_API_KEY"):
+                status += " (API key missing)"
+            model_options.append({
+                "name": model,
+                "display": f"{model} - {status}",
+                "description": MODEL_DESCRIPTIONS.get(model, "No description"),
+                "is_header": False
             })
         
         # Create selectbox with custom formatting
-        selected_option = st.selectbox(
+        # The format_func will just use the 'display' key. Headers are normal items.
+        # We need to ensure the initial index is for a real model, not a header.
+        try:
+            initial_model_index = next(i for i, opt in enumerate(model_options) if opt["name"] == current_model and not opt.get("is_header"))
+        except StopIteration:
+            initial_model_index = 0 # Default to first item if current_model not found or is a header
+            # Try to find the first non-header item if current_model wasn't found
+            first_real_model_index = next((i for i, opt in enumerate(model_options) if not opt.get("is_header")), 0)
+            initial_model_index = first_real_model_index
+
+
+        selected_option_obj = st.selectbox(
             "Select AI Model",
             model_options,
-            format_func=lambda x: x["display"],
-            index=next((i for i, m in enumerate(model_options) if m["name"] == current_model), 0),
+            format_func=lambda x: x["display"], # Headers will be displayed as is
+            index=initial_model_index,
             key="unified_model_select",
             help="This model will be used for both document processing and quiz generation"
         )
-        quiz_model = selected_option["name"]
+
+        # Handle if a header was somehow selected, though selectbox usually prevents this with distinct objects.
+        # For safety, if a header is selected, try to use the actual current_model or default.
+        if selected_option_obj.get("is_header"):
+            st.warning("Please select an actual model, not a category header.")
+            # Attempt to fall back to the globally set current_model if a header is chosen
+            # This part might need more robust handling depending on Streamlit's selectbox behavior with identical display strings
+            quiz_model = current_model
+            selected_description = MODEL_DESCRIPTIONS.get(quiz_model, "No description")
+        else:
+            quiz_model = selected_option_obj["name"]
+            selected_description = selected_option_obj["description"]
         
         # Show model description
-        st.caption(selected_option["description"])
+        st.caption(selected_description)
         
         # Show info about unified model usage
         st.info("💡 This model handles both document processing (embedding/concept extraction) and quiz generation automatically.")
         
         # Check if current model is an OpenAI or Ollama model
-        is_openai_model = quiz_model in st.session_state.quiz_generator.openai_models
+        is_openai_model = quiz_model in openai_model_names
         
         # Use different layouts based on model type
         if is_openai_model:
@@ -119,10 +192,23 @@ def main():
                     with st.spinner(f"Setting up AI model {quiz_model}..."):
                         try:
                             # Set model for all components to ensure consistency
-                            st.session_state.quiz_generator.set_model(quiz_model)
-                            st.session_state.document_processor.set_model(quiz_model)
-                            if hasattr(st.session_state.vector_manager, 'current_model'):
-                                st.session_state.vector_manager.current_model = quiz_model
+                            st.session_state.quiz_generator.llm_manager.set_model(quiz_model) # This updates the shared config
+                            
+                            # Get the newly updated config
+                            # updated_shared_config is not strictly needed here as components should use their self.config
+                            # which points to the st.session_state.shared_quiz_config that llm_manager just updated.
+
+                            # Update DocumentProcessor's LLM
+                            if hasattr(st.session_state.document_processor, 'update_llm_configuration'):
+                                st.session_state.document_processor.update_llm_configuration()
+                            else:
+                                st.warning("Dev: DocumentProcessor does not have update_llm_configuration method.")
+                            
+                            # Update VectorManager's LLM
+                            if hasattr(st.session_state.vector_manager, 'update_llm_configuration'):
+                                st.session_state.vector_manager.update_llm_configuration()
+                            else:
+                                st.warning("Dev: VectorManager does not have update_llm_configuration method.")
                             
                             st.success(f"✅ AI model set to {quiz_model} for all tasks")
                             st.info(f"🔄 {quiz_model} will handle both document processing and quiz generation")
@@ -137,10 +223,10 @@ def main():
                     with st.spinner(f"Setting up AI model {quiz_model}..."):
                         try:
                             # For local models, check if available
-                            if quiz_model not in local_models:
+                            if quiz_model not in all_local_models: # Corrected variable name
                                 with st.status(f"📥 Downloading {quiz_model}...", expanded=True) as status:
                                     status.write("Starting model download...")
-                                    success = st.session_state.quiz_generator.pull_model(quiz_model)
+                                    success = st.session_state.quiz_generator.llm_manager.pull_model(quiz_model)
                                     if success:
                                         status.update(label="✅ Download completed!", state="complete", expanded=False)
                                     else:
@@ -149,10 +235,21 @@ def main():
                                         st.stop()
                             
                             # Set model for all components to ensure consistency
-                            st.session_state.quiz_generator.set_model(quiz_model)
-                            st.session_state.document_processor.set_model(quiz_model)
-                            if hasattr(st.session_state.vector_manager, 'current_model'):
-                                st.session_state.vector_manager.current_model = quiz_model
+                            st.session_state.quiz_generator.llm_manager.set_model(quiz_model) # This updates the shared config
+
+                            # updated_shared_config is not strictly needed here.
+
+                            # Update DocumentProcessor's LLM
+                            if hasattr(st.session_state.document_processor, 'update_llm_configuration'):
+                                st.session_state.document_processor.update_llm_configuration()
+                            else:
+                                st.warning("Dev: DocumentProcessor does not have update_llm_configuration method.")
+                            
+                            # Update VectorManager's LLM
+                            if hasattr(st.session_state.vector_manager, 'update_llm_configuration'):
+                                st.session_state.vector_manager.update_llm_configuration()
+                            else:
+                                st.warning("Dev: VectorManager does not have update_llm_configuration method.")
                             
                             st.success(f"✅ AI model set to {quiz_model} for all tasks")
                             st.info(f"🔄 {quiz_model} will handle both document processing and quiz generation")
@@ -163,7 +260,7 @@ def main():
                 # Test Connection for Quiz Model
                 if st.button("🔗 Test Ollama", key="test_quiz_connection", use_container_width=True):
                     with st.spinner("Testing connection..."):
-                        if st.session_state.quiz_generator.test_ollama_connection():
+                        if st.session_state.quiz_generator.llm_manager.test_ollama_connection():
                             st.success("✅ Connection successful!")
                         else:
                             st.error("❌ Connection failed. Make sure Ollama is running")
@@ -211,31 +308,84 @@ def main():
     if uploaded_file:
         st.success(f"Document '{uploaded_file.name}' uploaded successfully!")
         
-        if st.button("🔄 Process Document", type="primary"):
+        # Placeholders for dynamic UI elements
+        stop_button_placeholder = st.empty()
+        progress_bar_placeholder = st.empty()
+
+        if st.button("🔄 Process Document", type="primary", disabled=st.session_state.get('is_processing', False)):
+            st.session_state.is_processing = True
+            st.session_state.stop_processing = False
+            # Store file content in session state to avoid re-reading if rerun happens for stop button
+            if 'uploaded_file_content' not in st.session_state or st.session_state.uploaded_file_name != uploaded_file.name:
+                st.session_state.uploaded_file_content = uploaded_file.read()
+                st.session_state.uploaded_file_name = uploaded_file.name
+            st.rerun()
+
+        if st.session_state.get('is_processing', False):
+            # Display stop button
+            with stop_button_placeholder.container():
+                if st.button("⏹️ Stop Processing", key="stop_processing_button"):
+                    st.session_state.stop_processing = True
+                    st.warning("Stop signal sent. Processing will halt after the current chunk...")
+            
+            # Display and initialize progress bar
+            current_progress_bar = progress_bar_placeholder.progress(0)
+
+            def update_progress_callback(chunk_index, total_chunks):
+                if total_chunks > 0:
+                    progress_value = (chunk_index) / total_chunks # chunk_index is 1-based from processor
+                    current_progress_bar.progress(progress_value)
+
             try:
-                with st.spinner("Processing document..."):
-                    progress_bar = st.progress(0)
-                    # Simulating steps for demo
-                    progress_bar.progress(25); time.sleep(0.1)
+                with st.spinner("Processing document... (this may take a while for large documents)"):
+                    # Ensure uploaded_file_content is available
+                    if 'uploaded_file_content' not in st.session_state or \
+                       st.session_state.uploaded_file_name != uploaded_file.name:
+                        # This case should ideally be prevented by the logic in "Process Document" button
+                        st.error("File content not found in session. Please re-upload.")
+                        st.session_state.is_processing = False
+                        st.rerun()
+
+                    # Add DEBUG logs here
+                    st.write(f"DEBUG: Just before processing, shared_config.current_model is: {st.session_state.shared_quiz_config.current_model}")
+                    if st.session_state.document_processor.contextgem_llm:
+                        st.write(f"DEBUG: DP's ContextGem LLM model: {st.session_state.document_processor.contextgem_llm.model}")
+                    else:
+                        st.write("DEBUG: DP's ContextGem LLM is None.")
+
                     processed_content = st.session_state.document_processor.process(
-                        uploaded_file.read(),
-                        "direct_input",  # source indicates it's direct input, not a file path
-                        custom_filename=uploaded_file.name  # pass the actual filename here
+                        st.session_state.uploaded_file_content, # Use stored content
+                        "direct_input",
+                        custom_filename=st.session_state.uploaded_file_name,
+                        stop_signal_check=lambda: st.session_state.get('stop_processing', False),
+                        chunk_processed_callback=update_progress_callback
                     )
-                    progress_bar.progress(75); time.sleep(0.1)
-                    st.session_state.processed_content = processed_content
-                    progress_bar.progress(100)
                     
-                    # Store the processed document with embeddings in pgvector
-                    try:
-                        doc_id = st.session_state.vector_manager.store_document(processed_content)
-                        st.success(f"✅ Document processed and stored with embeddings! ID: {doc_id[:8]}...")
-                    except Exception as e:
-                        st.error(f"❌ Error storing document with embeddings: {str(e)}")
-                        st.success("✅ Document processed successfully (without embeddings)!")
+                    if st.session_state.stop_processing:
+                        st.warning("Processing was stopped by the user.")
+                        st.session_state.processed_content = None
+                    else:
+                        st.session_state.processed_content = processed_content
+                        current_progress_bar.progress(1.0) # Mark as 100% if not stopped
+                        if processed_content:
+                            try:
+                                doc_id = st.session_state.vector_manager.store_document(processed_content)
+                                st.success(f"✅ Document processed and stored with embeddings! ID: {doc_id[:8]}...")
+                            except Exception as e:
+                                st.error(f"❌ Error storing document with embeddings: {str(e)}")
+                                st.success("✅ Document processed successfully (without embeddings)!")
+                        else:
+                             st.info("No content was processed to store (possibly stopped early).")
             except Exception as e:
                 st.error(f"❌ Error processing document: {str(e)}")
                 st.info("💡 Make sure the document is not corrupted and is in a supported format.")
+            finally:
+                st.session_state.is_processing = False
+                stop_button_placeholder.empty()
+                progress_bar_placeholder.empty() # Clear progress bar after processing
+                # Only rerun if explicitly needed, e.g., after a stop, to refresh UI state
+                # If processing completed normally, new UI elements might appear, so rerun is often good.
+                st.rerun()
 
     # Document Management Section
     st.header("🗃️ Document Management")
@@ -540,7 +690,7 @@ def main():
                                 filename = st.session_state.processed_content['filename']
                                 
                                 # Try to extract concepts using document processor
-                                concepts = st.session_state.document_processor.extract_concepts_with_direct_llm(
+                                concepts = st.session_state.document_processor.extract_concepts(
                                     content, filename, st.session_state.processed_content['format']
                                 )
                                 
@@ -645,34 +795,27 @@ def main():
                         
                         gen_progress_bar.progress(10)
                         
-                        # Ensure selected model is applied to ALL components
-                        current_quiz_model = st.session_state.quiz_generator.get_current_model()
-                        current_doc_model = st.session_state.document_processor.get_current_model()
-                        selected_model = quiz_model  # From sidebar selectbox
+                        # Ensure the model selected in the sidebar (quiz_model) is applied everywhere
+                        selected_model_from_sidebar = quiz_model # quiz_model is from the sidebar's selected_option_obj
                         
-                        # Apply selected model to both quiz generator and document processor
-                        if current_quiz_model != selected_model:
-                            st.info(f"Applying selected model {selected_model} to quiz generation...")
-                            try:
-                                st.session_state.quiz_generator.set_model(selected_model)
-                            except Exception as e:
-                                st.error(f"Error setting quiz model: {str(e)}")
-                                st.stop()
+                        # Update the shared config via LLMManager
+                        st.session_state.quiz_generator.llm_manager.set_model(selected_model_from_sidebar)
                         
-                        if current_doc_model != selected_model:
-                            st.info(f"Applying selected model {selected_model} to concept extraction...")
-                            try:
-                                st.session_state.document_processor.set_model(selected_model)
-                                # Also sync vector manager
-                                if hasattr(st.session_state.vector_manager, 'current_model'):
-                                    st.session_state.vector_manager.current_model = selected_model
-                            except Exception as e:
-                                st.warning(f"Could not set document processor model: {str(e)}")
+                        # Tell DocumentProcessor and VectorManager to update their internal ContextGem LLMs
+                        # based on the now-updated shared config.
+                        if hasattr(st.session_state.document_processor, 'update_llm_configuration'):
+                            st.session_state.document_processor.update_llm_configuration()
                         
-                        current_model = selected_model
+                        if hasattr(st.session_state.vector_manager, 'update_llm_configuration'):
+                            st.session_state.vector_manager.update_llm_configuration()
+
+                        # For quiz generation itself, LLMManager (via QuizGenerator) will use the model from shared_config.
+                        # For connection checks, use the model that LLMManager reports it's using.
+                        current_model_for_quiz_gen = st.session_state.quiz_generator.llm_manager.get_current_model()
+                        st.info(f"Using model for quiz generation: {current_model_for_quiz_gen}") # Changed to st.info
                         
                         # Check connection based on model type
-                        is_openai_model = current_model in st.session_state.quiz_generator.openai_models
+                        is_openai_model = current_model_for_quiz_gen in st.session_state.quiz_generator.llm_manager.get_openai_models()
                         
                         if is_openai_model:
                             # For OpenAI models, check API key
@@ -695,15 +838,16 @@ def main():
                             focus_topics.extend(st.session_state.selected_concepts)
                             st.info(f"🎯 Focusing quiz on {len(st.session_state.selected_concepts)} selected concepts")
                         
-                        # Convert to focus string for the quiz generator
-                        combined_focus = "; ".join(focus_topics) if focus_topics else None
+                        # focus_topics is already a List[str] of selected concept contents
+                        # combined_focus = "; ".join(focus_topics) if focus_topics else None # Old way
                         
-                        quiz_data = st.session_state.quiz_generator.generate(
+                        # The generate_quiz method will be updated to accept List[str] for focus
+                        quiz_data = st.session_state.quiz_generator.generate_quiz( # Corrected method name
                             st.session_state.processed_content,
                             question_types, # from sidebar
                             num_questions,  # from sidebar
                             difficulty,     # from sidebar
-                            combined_focus # combined focus section and selected concepts
+                            focus_topics # Pass the list of selected concept strings
                         )
                         gen_progress_bar.progress(90); time.sleep(0.1)
                         gen_progress_bar.progress(100)
