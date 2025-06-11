@@ -312,7 +312,23 @@ class InsightsGenerator:
         accuracy = quiz_analysis['basic_metrics']['accuracy_rate']
         completion = quiz_analysis['basic_metrics']['completion_rate']
         
-        if accuracy < 60:
+        # Handle perfect/excellent performance (90%+)
+        if accuracy >= 90 and completion >= 90:
+            recommendations["immediate_actions"].append({
+                "priority": "low",
+                "action": "Explore advanced topics",
+                "reason": f"Excellent performance ({accuracy}% accuracy) indicates readiness for more challenging material"
+            })
+            recommendations["long_term_goals"].append("Seek out more complex applications of these concepts")
+            recommendations["long_term_goals"].append("Consider teaching or mentoring others in this subject")
+            recommendations["long_term_goals"].append("Explore related advanced topics to broaden knowledge")
+        elif accuracy >= 80:
+            recommendations["immediate_actions"].append({
+                "priority": "low",
+                "action": "Consolidate understanding",
+                "reason": f"Good performance ({accuracy}% accuracy) shows solid grasp with room for refinement"
+            })
+        elif accuracy < 60:
             recommendations["immediate_actions"].append({
                 "priority": "high",
                 "action": "Review fundamental concepts",
@@ -379,38 +395,51 @@ As an expert educational analyst, provide a comprehensive learning insights repo
 
 {context_info}
 
+IMPORTANT CONTEXT ANALYSIS:
+- If accuracy rate is 85% or higher, this indicates EXCELLENT performance that should be celebrated
+- If accuracy rate is 100%, this indicates PERFECT performance - focus on congratulating and suggesting advanced challenges
+- If accuracy rate is 70-84%, this indicates GOOD performance with room for refinement
+- If accuracy rate is below 70%, then focus on improvement areas
+
 Please structure your response with these sections:
 
 ## 📊 PERFORMANCE OVERVIEW
 - Summarize overall performance with key metrics
+- If accuracy is 90%+, emphasize EXCELLENT performance
+- If accuracy is 100%, celebrate PERFECT performance
 - Highlight the most significant findings
 
 ## 🎯 LEARNING ANALYSIS  
 - Analyze learning patterns and cognitive indicators
+- For high performers (85%+), focus on mastery indicators
 - Identify learning style preferences
 - Assess knowledge retention and comprehension
 
 ## 📈 STRENGTHS & ACHIEVEMENTS
-- Celebrate what the learner did well
+- Celebrate what the learner did well (especially important for high scores)
 - Identify strong knowledge areas
 - Highlight positive learning indicators
+- For perfect scores, emphasize exceptional understanding
 
 ## 🔍 IMPROVEMENT OPPORTUNITIES
-- Identify 2-3 specific areas needing attention
-- Explain why these areas are important
-- Connect gaps to overall learning objectives
+- For high performers (85%+), suggest ADVANCED challenges rather than remedial work
+- For perfect scores (100%), focus on next-level applications and deeper exploration
+- For lower performers, identify specific areas needing attention
+- Always maintain encouraging tone
 
 ## 🛠️ PERSONALIZED RECOMMENDATIONS
-- Provide specific, actionable study strategies
-- Suggest learning methods based on identified patterns
+- For excellent performance: Suggest advanced topics, teaching others, or deeper applications
+- For good performance: Suggest consolidation and challenging extensions
+- For struggling performance: Provide foundational review and practice
 - Include both immediate and long-term recommendations
 
 ## 🎓 NEXT STEPS & MOTIVATION
-- Outline a clear path forward
-- Set realistic goals and expectations
-- Provide encouraging and motivational guidance
+- For high achievers: Challenge them with advanced material and applications
+- For perfect scores: Suggest exploration of related advanced topics
+- Always provide encouraging and motivational guidance
+- Set appropriate difficulty level for next challenges
 
-Use a supportive, constructive tone and make recommendations specific and actionable. Focus on growth mindset and continuous improvement.
+Use a supportive, constructive tone that matches the performance level. Celebrate successes appropriately and provide challenges that match the demonstrated competency.
 """
         
         try:
@@ -502,6 +531,10 @@ PERFORMANCE BY QUESTION TYPE:
     # Helper methods for various analyses
     def _check_answer_correctness(self, question: Dict, user_answer: Any) -> bool:
         """Check if user answer is correct"""
+        # If the question already has is_correct field (from previous processing), use it
+        if 'is_correct' in question:
+            return bool(question['is_correct'])
+            
         correct_answer = question.get('correct_answer', '')
         q_type = question.get('type', 'multiple_choice')
         

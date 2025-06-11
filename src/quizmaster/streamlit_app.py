@@ -186,11 +186,6 @@ def main():
             help="Select one or more question types"
         )
         
-        focus_section = st.text_input(
-            "Focus Section (optional)",
-            help="Enter keywords to focus on specific sections"
-        )
-        
         # Document Info
         if st.session_state.processed_content:
             st.subheader("📄 Document Info")
@@ -692,10 +687,8 @@ def main():
                         
                         gen_progress_bar.progress(30)
                         
-                        # Prepare focus parameters - combine focus_section with selected concepts
+                        # Prepare focus parameters using selected concepts
                         focus_topics = []
-                        if focus_section:
-                            focus_topics.append(focus_section)
                         
                         # Add selected concepts if any
                         if hasattr(st.session_state, 'selected_concepts') and st.session_state.selected_concepts:
@@ -736,7 +729,6 @@ def main():
                             # Always store extracted topics and concepts in the quiz_data
                             quiz_data['extracted_topics'] = {
                                 'selected_concepts': st.session_state.get('selected_concepts', []),
-                                'focus_section': focus_section if focus_section else None,
                                 'concept_count': len(st.session_state.get('selected_concepts', [])),
                                 'extraction_method': 'user_selected'
                             }
