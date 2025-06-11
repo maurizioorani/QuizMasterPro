@@ -1,8 +1,9 @@
 # 📚 QuizMaster Pro
 
-Transform any document into intelligent, personalized quizzes using AI. QuizMaster Pro combines OpenAI's robust document processing with flexible quiz generation using either OpenAI or local Ollama models.
+Transform any document into intelligent, personalized quizzes using AI. QuizMaster Pro offers flexible document processing and quiz generation using either OpenAI or local Ollama models.
 
-![QuizMaster Pro Screenshot 1](screenshots/quiz1.png) ![QuizMaster Pro Screenshot 2](screenshots/quiz2.png)
+![QuizMaster Pro Demo]
+<video src="https://github.com/maurizioorani/QuizMasterPro/blob/main/screenshots/QuizMasterPro.mov"/>
 
 ## 🎯 Core Concept
 
@@ -40,8 +41,8 @@ Upload documents → AI extracts key concepts → Select topics to focus on → 
 
 ### Prerequisites
 - Python 3.8+
-- **OpenAI API Key** (required for document processing)
-- [Ollama](https://ollama.ai/) (optional, for local quiz generation)
+- **AI Model Access**: Either OpenAI API Key OR [Ollama](https://ollama.ai/) for local models
+- Recommended: Both for maximum flexibility
 
 ### Installation
 ```bash
@@ -52,14 +53,19 @@ cd QuizMasterPro
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure OpenAI API key
-echo "OPENAI_API_KEY=your_key_here" > .env
-
-# 4. Launch application
+# 3. Launch application
 streamlit run src/quizmaster/streamlit_app.py
 ```
 
-### Optional: Ollama Setup
+### Model Setup (Choose One or Both)
+
+**Option A: OpenAI Models**
+```bash
+# Configure OpenAI API key
+echo "OPENAI_API_KEY=your_key_here" > .env
+```
+
+**Option B: Local Ollama Models**
 ```bash
 # Install Ollama (visit https://ollama.ai/)
 ollama serve
@@ -99,19 +105,22 @@ ollama serve
 
 ## 🔧 Model Configuration
 
-### Document Processing (OpenAI Required)
-- **`gpt-4o-mini`** - Recommended for structured output
-- **`gpt-4.1-nano`** - Efficient and reliable
-
-### Quiz Generation (OpenAI or Ollama)
-**🏆 Recommended Local Models:**
+### Document Processing & Quiz Generation
+**🏆 Recommended Local Models (Ollama):**
+- **`deepseek-r1`** - Advanced reasoning and structured output
 - **`mistral:7b`** - Excellent JSON generation (4.1GB)
 - **`qwen2.5:7b`** - Strong structured output (4.4GB)
 - **`gemma2:9b`** - Reliable instruction following (5.4GB)
 
 **☁️ OpenAI Models:**
 - **`gpt-4o-mini`** - Fast and cost-effective
-- **`gpt-4.1-nano`** - Balanced performance
+- **`gpt-4o`** - High-quality structured output
+- **`gpt-3.5-turbo`** - Balanced performance
+
+### Model Selection Tips
+- **For document processing**: deepseek-r1, mistral:7b, or gpt-4o-mini work well
+- **For quiz generation**: All models supported with consistent quality
+- **Model synchronization**: Use the same model for both processing and generation for best results
 
 ## 🏗️ Architecture
 
@@ -143,8 +152,9 @@ ollama serve
 | Issue | Solution |
 |-------|----------|
 | Ollama connection failed | Run `ollama serve` and ensure port 11434 is available |
-| Document processing errors | Verify OpenAI API key in `.env` file |
-| Poor quiz quality | Use recommended models (mistral:7b, qwen2.5:7b) |
+| OpenAI API errors | Verify OpenAI API key in `.env` file (if using OpenAI models) |
+| Document processing errors | Check selected model is available and running |
+| Poor quiz quality | Use recommended models (deepseek-r1, mistral:7b, qwen2.5:7b) |
 | Slow performance | Reduce document size or use focus sections |
 
 ### System Requirements
