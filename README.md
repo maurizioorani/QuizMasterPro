@@ -2,7 +2,7 @@
 
 Transform any document into intelligent, personalized quizzes using AI. QuizMaster Pro offers flexible document processing and quiz generation using either OpenAI or local Ollama models.
 
-<video src="https://github.com/maurizioorani/QuizMasterPro/blob/main/screenshots/QuizMasterPro.mov"/>
+![QuizMasterPro Demo](https://github.com/maurizioorani/QuizMasterPro/raw/main/screenshots/QuizMasterPro.gif)
 
 ## 🎯 Core Concept
 
