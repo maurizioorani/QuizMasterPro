@@ -104,26 +104,28 @@ class DocumentProcessor:
                 logger.warning("Empty or invalid text provided")
                 return []
             
-            # Ensure we have a model set - respect user's selection
+            # Only set a default model if absolutely no model has been set
+            # This preserves the user's explicit model selection from the UI
             if not self.current_model:
-                # Only set default if no model has been explicitly selected
+                # Try to get a reasonable default only if we truly have no model
                 try:
-                    # Test if Ollama is available
+                    # Test if Ollama is available for local models
                     response = requests.get("http://localhost:11434/api/tags", timeout=2)
                     if response.status_code == 200:
-                        self.current_model = "mistral:7b"  # Default local model
-                        logger.info("No model set, defaulting to local model: mistral:7b")
+                        # Default to a stable local model only as absolute fallback
+                        self.current_model = "mistral:7b"
+                        logger.warning("No model selected by user, defaulting to mistral:7b. Please select a model in the UI.")
                     else:
                         raise requests.RequestException("Ollama not responding")
                 except Exception:
-                    # Fallback to OpenAI if Ollama not available
+                    # Fallback to OpenAI if Ollama not available and no local model set
                     if os.environ.get("OPENAI_API_KEY"):
                         self.current_model = "gpt-4o-mini"
-                        logger.info("Ollama unavailable, defaulting to OpenAI: gpt-4o-mini")
+                        logger.warning("No local models available and no model selected, defaulting to OpenAI: gpt-4o-mini")
                     else:
-                        # Last resort
+                        # Last resort - but this should rarely happen with proper UI integration
                         self.current_model = "mistral:7b"
-                        logger.warning("No Ollama connection and no OpenAI key, defaulting to mistral:7b (may fail)")
+                        logger.error("No model available and no API key. Defaulting to mistral:7b (may fail)")
             
             logger.info(f"Using model: {self.current_model}")
             

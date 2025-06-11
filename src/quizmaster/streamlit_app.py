@@ -51,83 +51,25 @@ def main():
         st.page_link("pages/02_Saved_Quizzes.py", label="💾 Browse Saved Quizzes", icon="📚")
         st.divider()
         
-        # Separate Model Selection for Document Processing (Embedding)
-        st.subheader("🤖 Embedding Model (Document Processing)")
-        st.caption("For extracting concepts and embedding documents. OpenAI models recommended.")
-
-        MODEL_DESCRIPTIONS = {
-            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Lightweight but powerful model optimized for efficiency",
-            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Specialized for structured output and JSON generation",
-            "llama3.3:8b": "Meta's Llama 3.3: 8B parameters (fallback)",
-            "mistral:7b": "Mistral-7B - Efficient but not recommended for embedding",
-            "deepseek-coder:6.7b": "DeepSeek Coder 6.7B - Specialized for code understanding and embedding"
-        }
-
-        # Get current embedding model
-        current_embedding_model = st.session_state.document_processor.get_current_model()
-        
-        # Enhanced embedding model selection with status indicators
-        embedding_model_options = []
-        
-        # Add both OpenAI and local models for embedding
-        for model in MODEL_DESCRIPTIONS.keys():
-            if model.startswith('gpt-'):
-                status = "⚡ API"
-                if not os.environ.get("OPENAI_API_KEY"):
-                    status += " (key missing)"
-            else:
-                status = "🖥️ Local"
-                
-            embedding_model_options.append({
-                "name": model,
-                "display": f"{model} - {status}",
-                "description": MODEL_DESCRIPTIONS.get(model, "No description")
-            })
-        
-        # Create selectbox with custom formatting
-        selected_option = st.selectbox(
-            "Select Embedding Model",
-            embedding_model_options,
-            format_func=lambda x: x["display"],
-            index=next((i for i, m in enumerate(embedding_model_options) if m["name"] == current_embedding_model), 0),
-            key="embedding_model_select"
-        )
-        embedding_model = selected_option["name"]
-        
-        # Show model description
-        st.caption(selected_option["description"])
-        
-        if st.button("Apply Embedding Model", key="apply_embedding_model"):
-            if embedding_model.startswith('gpt-') and not os.environ.get("OPENAI_API_KEY"):
-                st.error("OpenAI API key not found in .env file")
-            else:
-                st.session_state.document_processor.set_model(embedding_model)
-                # Also update vector manager to use the same model for consistency
-                if hasattr(st.session_state.vector_manager, 'current_model'):
-                    st.session_state.vector_manager.current_model = embedding_model
-                st.success(f"Embedding model set to {embedding_model}")
-        
-        st.divider()
-        
-        # Separate Model Selection for Quiz Generation
-        st.subheader("🤖 Quiz Generation Model")
-        st.caption("For generating quiz questions. Local models recommended.")
+        # Unified Model Selection for Both Embedding and Quiz Generation
+        st.subheader("🤖 AI Model Selection")
+        st.caption("This model will be used for both document processing (embedding) and quiz generation. Local models are automatically pulled if needed.")
 
         # Enhanced model descriptions with clearer status indicators
-        QUIZ_MODEL_DESCRIPTIONS = {
-            "llama3.3:8b": "⭐ RECOMMENDED: Meta's Llama 3.3, 8B parameters",
-            "mistral:7b": "⭐ RECOMMENDED: Efficient JSON generation (4.1GB)",
-            "qwen2.5:7b": "⭐ RECOMMENDED: Strong JSON/structured output, multilingual",
-            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Requires API key",
-            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Requires API key"
+        MODEL_DESCRIPTIONS = {
+            "llama3.3:8b": "⭐ RECOMMENDED: Meta's Llama 3.3, 8B parameters - Great for both embedding and quiz generation",
+            "mistral:7b": "⭐ RECOMMENDED: Efficient JSON generation (4.1GB) - Well-suited for all tasks",
+            "qwen2.5:7b": "⭐ RECOMMENDED: Strong JSON/structured output, multilingual - Excellent all-purpose model",
+            "gpt-4.1-nano": "⚡ OPENAI: GPT-4.1 Nano - Requires API key, handles all tasks efficiently",
+            "gpt-4o-mini": "⚡ OPENAI: GPT-4O Mini - Requires API key, optimized for structured output"
         }
         
         # Get current model and local availability
-        current_quiz_model = st.session_state.quiz_generator.get_current_model()
+        current_model = st.session_state.quiz_generator.get_current_model()
         local_models = st.session_state.quiz_generator.get_local_models()
         
         # Create model display options with status indicators
-        quiz_model_options = []
+        model_options = []
         for model in st.session_state.quiz_generator.get_available_models():
             if model.startswith('gpt-'):
                 # OpenAI models
@@ -139,33 +81,30 @@ def main():
                 if model in local_models:
                     status = "✅ Local"
                 else:
-                    status = "📥 To be pulled"
+                    status = "📥 Auto-pull needed"
                 
-            quiz_model_options.append({
+            model_options.append({
                 "name": model,
                 "display": f"{model} - {status}",
-                "description": QUIZ_MODEL_DESCRIPTIONS.get(model, "No description")
+                "description": MODEL_DESCRIPTIONS.get(model, "No description")
             })
         
         # Create selectbox with custom formatting
         selected_option = st.selectbox(
-            "Select Quiz Model",
-            quiz_model_options,
+            "Select AI Model",
+            model_options,
             format_func=lambda x: x["display"],
-            index=next((i for i, m in enumerate(quiz_model_options) if m["name"] == current_quiz_model), 0),
-            key="quiz_model_select"
+            index=next((i for i, m in enumerate(model_options) if m["name"] == current_model), 0),
+            key="unified_model_select",
+            help="This model will be used for both document processing and quiz generation"
         )
         quiz_model = selected_option["name"]
         
         # Show model description
         st.caption(selected_option["description"])
         
-        # Add synchronization option
-        sync_models = st.checkbox(
-            "🔄 Use same model for document processing", 
-            value=True,
-            help="When enabled, both concept extraction and quiz generation will use the same model"
-        )
+        # Show info about unified model usage
+        st.info("💡 This model handles both document processing (embedding/concept extraction) and quiz generation automatically.")
         
         # Check if current model is an OpenAI or Ollama model
         is_openai_model = quiz_model in st.session_state.quiz_generator.openai_models
@@ -173,35 +112,29 @@ def main():
         # Use different layouts based on model type
         if is_openai_model:
             # For OpenAI models, just show the Apply button
-            if st.button("Apply Quiz Model", key="apply_quiz_model", use_container_width=True):
+            if st.button("Apply AI Model", key="apply_ai_model_openai", use_container_width=True):
                 if not os.environ.get("OPENAI_API_KEY"):
                     st.error("OpenAI API key not found in .env file")
                 else:
-                    with st.spinner(f"Setting up quiz model {quiz_model}..."):
+                    with st.spinner(f"Setting up AI model {quiz_model}..."):
                         try:
+                            # Set model for all components to ensure consistency
                             st.session_state.quiz_generator.set_model(quiz_model)
-                            # Sync document processor if enabled
-                            if sync_models:
-                                try:
-                                    st.session_state.document_processor.set_model(quiz_model)
-                                    if hasattr(st.session_state.vector_manager, 'current_model'):
-                                        st.session_state.vector_manager.current_model = quiz_model
-                                    st.success(f"✅ Both quiz generation and document processing set to {quiz_model}")
-                                    st.info(f"🔄 All future document processing will use {quiz_model}")
-                                except Exception as e:
-                                    st.warning(f"Quiz model set, but couldn't sync document processor: {str(e)}")
-                                    st.success(f"Quiz model set to {quiz_model}")
-                            else:
-                                st.success(f"Quiz model set to {quiz_model}")
+                            st.session_state.document_processor.set_model(quiz_model)
+                            if hasattr(st.session_state.vector_manager, 'current_model'):
+                                st.session_state.vector_manager.current_model = quiz_model
+                            
+                            st.success(f"✅ AI model set to {quiz_model} for all tasks")
+                            st.info(f"🔄 {quiz_model} will handle both document processing and quiz generation")
                         except Exception as e:
-                            st.error(f"Error setting quiz model: {str(e)}")
+                            st.error(f"Error setting AI model: {str(e)}")
         else:
             # For Ollama models, show Apply and Test buttons side by side
             col1, col2 = st.columns(2)
             
             with col1:
-                if st.button("Apply Quiz Model", key="apply_quiz_model", use_container_width=True):
-                    with st.spinner(f"Setting up quiz model {quiz_model}..."):
+                if st.button("Apply AI Model", key="apply_ai_model_ollama", use_container_width=True):
+                    with st.spinner(f"Setting up AI model {quiz_model}..."):
                         try:
                             # For local models, check if available
                             if quiz_model not in local_models:
@@ -215,20 +148,14 @@ def main():
                                         st.error(f"Failed to download {quiz_model}")
                                         st.stop()
                             
+                            # Set model for all components to ensure consistency
                             st.session_state.quiz_generator.set_model(quiz_model)
-                            # Sync document processor if enabled
-                            if sync_models:
-                                try:
-                                    st.session_state.document_processor.set_model(quiz_model)
-                                    if hasattr(st.session_state.vector_manager, 'current_model'):
-                                        st.session_state.vector_manager.current_model = quiz_model
-                                    st.success(f"✅ Both quiz generation and document processing set to {quiz_model}")
-                                    st.info(f"🔄 All future document processing will use {quiz_model}")
-                                except Exception as e:
-                                    st.warning(f"Quiz model set, but couldn't sync document processor: {str(e)}")
-                                    st.success(f"Quiz model set to {quiz_model}")
-                            else:
-                                st.success(f"Quiz model set to {quiz_model}")
+                            st.session_state.document_processor.set_model(quiz_model)
+                            if hasattr(st.session_state.vector_manager, 'current_model'):
+                                st.session_state.vector_manager.current_model = quiz_model
+                            
+                            st.success(f"✅ AI model set to {quiz_model} for all tasks")
+                            st.info(f"🔄 {quiz_model} will handle both document processing and quiz generation")
                         except Exception as e:
                             st.error(f"Error setting quiz model: {str(e)}")
             
@@ -588,6 +515,46 @@ def main():
                                 if concepts:
                                     # Add concepts to processed_content
                                     st.session_state.processed_content['concepts'] = concepts
+                                    
+                                    # IMPORTANT: Save concepts to database for persistence
+                                    try:
+                                        # Find the document ID by content hash
+                                        import hashlib
+                                        doc_id = hashlib.sha256(content.encode()).hexdigest()
+                                        
+                                        # Convert document processor concepts to ContextGem format for storage
+                                        formatted_concepts = {}
+                                        for concept in concepts:
+                                            concept_name = concept.get('concept_name', 'Extracted Concepts')
+                                            concept_content = concept.get('content', '')
+                                            
+                                            if concept_content.strip():
+                                                if concept_name not in formatted_concepts:
+                                                    formatted_concepts[concept_name] = {"items": []}
+                                                
+                                                formatted_concepts[concept_name]["items"].append({
+                                                    "value": concept_content,
+                                                    "references": [],
+                                                    "justification": "Extracted by document processor"
+                                                })
+                                        
+                                        # Update database with new concepts
+                                        if formatted_concepts:
+                                            import json
+                                            with st.session_state.vector_manager.db._get_connection() as conn:
+                                                with conn.cursor() as cursor:
+                                                    cursor.execute('''
+                                                        UPDATE documents_enhanced 
+                                                        SET extracted_concepts = %s, updated_at = CURRENT_TIMESTAMP
+                                                        WHERE id = %s
+                                                    ''', (json.dumps(formatted_concepts), doc_id))
+                                                conn.commit()
+                                            
+                                            st.info("💾 Concepts saved to database for persistence")
+                                        
+                                    except Exception as save_error:
+                                        st.warning(f"Concepts extracted but couldn't save to database: {str(save_error)}")
+                                    
                                     st.success(f"✅ Successfully extracted {len(concepts)} concepts!")
                                     st.rerun()
                                 else:
@@ -834,14 +801,27 @@ def main():
                                 use_container_width=True
                             )
                             
-                            # Add custom CSS to make the button more prominent
+                            # Add custom CSS to make the button much bigger and more prominent
                             st.markdown("""
                             <style>
                             .stPageLink {
-                                font-size: 1.5rem !important;
-                                padding: 1rem !important;
+                                font-size: 2.5rem !important;
+                                font-weight: bold !important;
+                                padding: 2rem 3rem !important;
                                 text-align: center !important;
-                                margin: 1rem 0 !important;
+                                margin: 2rem 0 !important;
+                                background: linear-gradient(45deg, #FF6B6B, #4ECDC4) !important;
+                                color: white !important;
+                                border-radius: 15px !important;
+                                box-shadow: 0 8px 16px rgba(0,0,0,0.2) !important;
+                                text-decoration: none !important;
+                                display: block !important;
+                                transform: scale(1.1) !important;
+                                transition: all 0.3s ease !important;
+                            }
+                            .stPageLink:hover {
+                                transform: scale(1.15) !important;
+                                box-shadow: 0 12px 24px rgba(0,0,0,0.3) !important;
                             }
                             </style>
                             """, unsafe_allow_html=True)

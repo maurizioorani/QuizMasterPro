@@ -254,18 +254,41 @@ class VectorManager:
             
             logger.info(f"Document {doc_id} stored successfully")
             
-            # Always ensure concepts are created - try ContextGem first, then fallback
+            # First, check if the document processor already extracted concepts
             extracted_concepts = {}
             
-            try:
-                # Try ContextGem extraction first
-                extracted_concepts = self._fast_concept_extraction(content)
-                logger.info(f"ContextGem extraction result: {extracted_concepts}")
+            # Check if document processor provided concepts
+            if "concepts" in processed_doc and processed_doc["concepts"]:
+                logger.info(f"Using concepts from document processor: {len(processed_doc['concepts'])} concepts found")
                 
-            except Exception as extraction_error:
-                logger.warning(f"ContextGem extraction failed for {doc_id}: {str(extraction_error)}")
+                # Convert document processor concepts to ContextGem format
+                for concept in processed_doc["concepts"]:
+                    concept_name = concept.get("concept_name", "Extracted Concept")
+                    concept_content = concept.get("content", "")
+                    
+                    if concept_content and concept_content.strip():
+                        if concept_name not in extracted_concepts:
+                            extracted_concepts[concept_name] = {"items": []}
+                        
+                        extracted_concepts[concept_name]["items"].append({
+                            "value": concept_content,
+                            "references": [],
+                            "justification": concept.get("metadata", {}).get("extraction_method", "Document processor extraction")
+                        })
+                
+                logger.info(f"Converted document processor concepts: {list(extracted_concepts.keys())}")
             
-            # If ContextGem failed or returned empty, use fallback
+            # If no concepts from document processor, try ContextGem extraction
+            if not extracted_concepts:
+                try:
+                    logger.info(f"No concepts from document processor, trying ContextGem extraction for {doc_id}")
+                    extracted_concepts = self._fast_concept_extraction(content)
+                    logger.info(f"ContextGem extraction result: {extracted_concepts}")
+                    
+                except Exception as extraction_error:
+                    logger.warning(f"ContextGem extraction failed for {doc_id}: {str(extraction_error)}")
+            
+            # If still no concepts, use fallback
             if not extracted_concepts:
                 logger.info(f"Using fallback concept extraction for {doc_id}")
                 try:
