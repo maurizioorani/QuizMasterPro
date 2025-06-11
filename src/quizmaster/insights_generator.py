@@ -578,19 +578,58 @@ SPECIFIC QUESTION ANALYSIS:
             return False
     
     def _extract_question_topic(self, question: Dict) -> str:
-        """Extract topic from question for analysis"""
-        # Try to get topic from question metadata
-        if 'topic' in question:
+        """Extract meaningful topic from question for analysis"""
+        # Try to get topic from question metadata first
+        if 'topic' in question and question['topic'].strip():
             return question['topic']
-        elif 'category' in question:
+        elif 'category' in question and question['category'].strip():
             return question['category']
-        else:
-            # Extract potential topic from question text (simple heuristic)
-            text = question['text'].lower()
-            words = text.split()
-            if len(words) > 3:
-                return ' '.join(words[1:4])  # Use middle words as topic approximation
-            return 'general'
+        
+        # Try to extract meaningful topic from question text
+        text = question['text']
+        
+        # Look for key programming/technical concepts
+        technical_patterns = [
+            r'\b(DRY|SOLID|REST|API|HTTP|JSON|XML|SQL|NoSQL|OOP|MVC|CRUD)\b',
+            r'\b(algorithm|data structure|database|framework|library|method|function|class|object|variable)\b',
+            r'\b(python|javascript|java|html|css|react|node|django|flask|spring)\b',
+            r'\b(design pattern|best practice|principle|methodology|approach)\b'
+        ]
+        
+        import re
+        for pattern in technical_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                return matches[0].upper() if matches[0].upper() in ['DRY', 'SOLID', 'REST', 'API', 'HTTP', 'JSON', 'XML', 'SQL', 'OOP', 'MVC', 'CRUD'] else matches[0].lower()
+        
+        # Extract meaningful noun phrases (avoid question words and fragments)
+        # Remove question words and common filler words
+        stop_words = {'what', 'which', 'how', 'when', 'where', 'why', 'who', 'does', 'is', 'are', 'will', 'would', 'could', 'should', 'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from'}
+        
+        # Split into words and clean
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        meaningful_words = [word for word in words if word not in stop_words and len(word) > 2]
+        
+        # Take first few meaningful words that might represent the topic
+        if len(meaningful_words) >= 2:
+            # Look for noun-like words (ending in common noun patterns)
+            topic_candidates = []
+            for i, word in enumerate(meaningful_words[:5]):  # Check first 5 meaningful words
+                # Skip if it looks like a verb or question fragment
+                if word.endswith(('ing', 'ed', 'ly')):
+                    continue
+                topic_candidates.append(word)
+            
+            if topic_candidates:
+                # Return up to 2 words that seem to form a topic
+                return ' '.join(topic_candidates[:2]).title()
+        
+        # Fallback: use question type
+        q_type = question.get('type', 'general')
+        if q_type != 'general':
+            return f"{q_type.replace('_', ' ').title()} Questions"
+        
+        return 'General Knowledge'
     
     def _extract_concept_value(self, concepts: Dict, concept_name: str) -> str:
         """Extract value from ContextGem extracted concepts"""
