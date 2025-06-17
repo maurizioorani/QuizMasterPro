@@ -17,6 +17,12 @@ def show_saved_quizzes_page():
         page_icon="💾", 
         layout="wide"
     )
+    
+    st.sidebar.page_link("streamlit_app.py", label="Quiz Setup", icon="📝")
+    st.sidebar.page_link("pages/01_Interactive_Quiz.py", label="Interactive Quiz", icon="🎓")
+    st.sidebar.page_link("pages/02_Saved_Quizzes.py", label="Saved Quizzes", icon="💾")
+    st.sidebar.divider()
+
     st.title("💾 Saved Quizzes")
     st.markdown("Browse and load previously saved quizzes")
 
@@ -32,7 +38,7 @@ def show_saved_quizzes_page():
     
     if not saved_quizzes:
         st.info("No saved quizzes found. Generate and save some quizzes first!")
-        st.page_link("streamlit_app.py", label="Go to Quiz Generator", icon="🏠")
+        st.page_link("streamlit_app.py", label="Go to Quiz Setup", icon="📋")
         return
     
     # Display quizzes in a table
@@ -121,7 +127,7 @@ def show_saved_quizzes_page():
         st.divider()
     
     # Link back to main page
-    st.page_link("streamlit_app.py", label="Back to Quiz Generator", icon="🏠")
+    st.page_link("streamlit_app.py", label="Back to Quiz Setup")
 
 if __name__ == "__main__":
     show_saved_quizzes_page()

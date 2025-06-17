@@ -2,204 +2,279 @@ import os
 import json
 import re
 import hashlib
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional as PyOptional, Union
 import logging
 from pathlib import Path
-from .config import QuizConfig # Added for QuizConfig type hint
-import requests # Ensure requests is imported if not already (it's used in _initialize_contextgem)
+import requests
 
-# Set up logging
-logger = logging.getLogger(__name__)
+from .config import QuizConfig
+from .database_manager import DatabaseManager
 
+# Pydantic Schemas for LlamaCPP output
+from pydantic import BaseModel, Field
+
+# LlamaIndex and LlamaCPP imports
+try:
+    from llama_index.llms.llama_cpp import LlamaCPP
+    from llama_index.llms.llama_cpp.llama_utils import messages_to_prompt, completion_to_prompt
+    from llama_cpp.llama_grammar import LlamaGrammar
+    LLAMA_INDEX_AVAILABLE_VM = True
+except ImportError:
+    LLAMA_INDEX_AVAILABLE_VM = False
+    LlamaCPP = None 
+    LlamaGrammar = None
+    messages_to_prompt = None
+    completion_to_prompt = None
+    logging.getLogger(__name__).warning(
+        "VectorManager: LlamaIndex/LlamaCPP libraries not available. "
+        "LlamaCPP functionality for VectorManager will be disabled."
+    )
+
+# ContextGem imports
 try:
     from contextgem import (
-        Document,
+        Document as ContextGemInternalDocument, # Alias to avoid conflict with any other Document
         DocumentLLM,
         Aspect,
         StringConcept,
-        JsonObjectConcept,
+        JsonObjectConcept, # Keep if used by self.simple_pipeline
         DateConcept,
         NumericalConcept,
         BooleanConcept,
-        DocumentPipeline,
-        Image,
-        image_to_base64
+        DocumentPipeline
     )
     CONTEXTGEM_AVAILABLE = True
-    logger.info("ContextGem library loaded successfully")
+    logging.getLogger(__name__).info("ContextGem library loaded successfully for VectorManager.")
 except ImportError as e:
     CONTEXTGEM_AVAILABLE = False
-    logger.error(f"ContextGem not available: {e}. Please install with: pip install contextgem")
+    # Define placeholders if ContextGem is not available to avoid NameErrors on class attributes
+    class DocumentLLM: pass 
+    class DocumentPipeline: pass
+    class Aspect: pass
+    class StringConcept: pass
+    class JsonObjectConcept: pass
+    class DateConcept: pass
+    class NumericalConcept: pass
+    class BooleanConcept: pass
+    logging.getLogger(__name__).error(f"VectorManager: ContextGem not available: {e}. ContextGem features disabled.")
 
-from database_manager import DatabaseManager
+
+logger = logging.getLogger(__name__)
+
+# --- Pydantic Schemas for VectorManager's LlamaCPP Output ---
+class VMTopic(BaseModel):
+    topic: str = Field(..., description="A key topic extracted from the document.")
+    # relevance: PyOptional[str] = Field(None, description="Optional relevance score, e.g., High, Medium, Low")
+
+class VMSummaryAndTopics(BaseModel):
+    document_summary: str = Field(..., description="A concise summary of the document.")
+    key_topics: List[VMTopic] = Field(..., description="A list of key topics.")
 
 class VectorManager:
-    """Enhanced Vector Manager using ContextGem for intelligent document processing"""
+    """Manages storage, retrieval, and ContextGem/LlamaCPP-based metadata extraction for documents."""
     
-    def __init__(self, config: Optional[QuizConfig] = None):
-        self.embeddings_available = CONTEXTGEM_AVAILABLE
+    def __init__(self, config: PyOptional[QuizConfig] = None):
         self.db = DatabaseManager()
-        self.config = config # Store the passed config
-        self.llm: Optional[DocumentLLM] = None # Ensure self.llm is defined
+        self.config = config if config else QuizConfig()
         
-        # Initialize ContextGem components
+        self.contextgem_llm: PyOptional[DocumentLLM] = None # For ContextGem operations
+        self.contextgem_pipeline: PyOptional[DocumentPipeline] = None # Defined by _setup_extraction_pipeline
+
+        self.llama_cpp_llm_vm: PyOptional[LlamaCPP] = None # For LlamaCPP operations
+        self.llama_grammar_vm: PyOptional[LlamaGrammar] = None
+        self.llama_cpp_model_path = self.config.gguf_model_path # Set from global config
+
+        try:
+            import tiktoken
+            self.encoding = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            logger.warning("VectorManager: Failed to get tiktoken cl100k_base encoding. Using gpt-3.5-turbo as fallback.")
+            try:
+                self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            except Exception:
+                logger.error("VectorManager: Failed to get any tiktoken encoding. Token counting will be char-based.")
+                self.encoding = None
+        
+        self._create_enhanced_documents_table()
         if CONTEXTGEM_AVAILABLE:
-            self._initialize_contextgem()
-            self._create_enhanced_documents_table()
-            self._setup_extraction_pipeline()
-        else:
-            logger.warning("Vector storage disabled - ContextGem not available")
+            self._setup_extraction_pipeline() # Defines self.contextgem_pipeline
+        
+        self.update_llm_configuration() # Initial call to set up LLMs based on config
 
     def update_llm_configuration(self):
-        """
-        Re-initializes the ContextGem DocumentLLM instance based on the current
-        configuration. This should be called if the global model config changes.
-        """
-        if CONTEXTGEM_AVAILABLE: # Only try if library is there
-            logger.info("VectorManager attempting to update LLM configuration for ContextGem.")
-            if not self.config:
-                logger.warning("VectorManager has no config set; LLM re-initialization might use defaults.")
-            self._initialize_contextgem()
-        else:
-            logger.warning("VectorManager: ContextGem not available, cannot update LLM configuration.")
+        """Re-initializes LLM instances based on current config's processing_engine."""
+        if not self.config:
+            logger.warning("VectorManager: No config set; LLM configuration update skipped.")
+            return
 
+        logger.info(f"VectorManager: Updating LLM configurations for engine: {self.config.processing_engine}.")
+        self.llama_cpp_model_path = self.config.gguf_model_path # Ensure path is current
+
+        if self.config.processing_engine == "llamacpp_gguf":
+            logger.info("VectorManager: Engine is LlamaCPP GGUF.")
+            self.contextgem_llm = None # Clear ContextGem LLM for generative tasks
+            logger.info("VectorManager: ContextGem LLM (self.contextgem_llm) cleared for generative tasks.")
+            if LLAMA_INDEX_AVAILABLE_VM:
+                logger.info("VectorManager: Initializing LlamaCPP pipeline for its own tasks.")
+                self.llama_cpp_llm_vm = None 
+                self.llama_grammar_vm = None
+                self._init_llamacpp_pipeline_for_vm()
+            else:
+                logger.error("VectorManager: LlamaCPP GGUF engine selected, but LlamaIndex/LlamaCPP libraries not available.")
+        
+        elif self.config.processing_engine == "contextgem":
+            logger.info("VectorManager: Engine is ContextGem.")
+            if CONTEXTGEM_AVAILABLE:
+                self._initialize_contextgem() # This sets self.contextgem_llm
+            else:
+                logger.warning("VectorManager: ContextGem engine selected, but ContextGem library not available.")
+                self.contextgem_llm = None
+            self.llama_cpp_llm_vm = None # Clear LlamaCPP if switching to ContextGem
+            self.llama_grammar_vm = None
+            logger.info("VectorManager: LlamaCPP pipeline (for VM) cleared as ContextGem is the engine.")
+        else:
+            logger.warning(f"VectorManager: Unknown processing engine '{self.config.processing_engine}'. No LLM configured.")
+            self.contextgem_llm = None
+            self.llama_cpp_llm_vm = None
+            self.llama_grammar_vm = None
 
     def _initialize_contextgem(self):
-        """Initialize ContextGem DocumentLLM instance, preferring UI selected model if OpenAI."""
-        self.llm = None # Reset llm instance before re-initializing
-        self.embeddings_available = False # Reset status
+        """Initializes ContextGem DocumentLLM instance for 'contextgem' engine."""
+        if not CONTEXTGEM_AVAILABLE:
+            self.contextgem_llm = None
+            logger.warning("VectorManager: ContextGem library not available, cannot initialize ContextGem LLM.")
+            return
+
+        self.contextgem_llm = None 
+        current_global_model = self.config.current_model
+        logger.info(f"VectorManager: Initializing ContextGem LLM. Globally selected model: '{current_global_model}'.")
 
         try:
             openai_api_key = os.environ.get("OPENAI_API_KEY")
-            anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+            ollama_base_url = self.config.ollama_base_url
 
-            # Priority 1: Use globally selected OpenAI model if available and an API key is present
-            if self.config and self.config.current_model and self.config.current_model in self.config.openai_models:
+            if current_global_model in self.config.openai_models:
                 if openai_api_key:
-                    cg_model_name = self.config.current_model
-                    if not cg_model_name.startswith("openai/"):
-                        cg_model_name = f"openai/{cg_model_name}"
-                    
-                    self.llm = DocumentLLM(model=cg_model_name, api_key=openai_api_key)
-                    logger.info(f"VectorManager using UI selected OpenAI model '{cg_model_name}' for ContextGem.")
-                    self.embeddings_available = True # Mark as available since we successfully configured an LLM
+                    cg_model_name = f"openai/{current_global_model.replace('openai/', '')}"
+                    self.contextgem_llm = DocumentLLM(model=cg_model_name, api_key=openai_api_key)
+                    logger.info(f"VectorManager: ContextGem using globally selected OpenAI model '{cg_model_name}'.")
                     return
                 else:
-                    logger.error(f"VectorManager: UI selected OpenAI model {self.config.current_model} but OPENAI_API_KEY not found. Cannot use this model.")
-                    self.llm = None
-                    self.embeddings_available = False # Explicitly mark as unavailable
-                    logger.warning("VectorManager: ContextGem LLM set to None due to missing API key for selected OpenAI model.")
-                    return # Explicitly stop further model search
+                    logger.warning(f"VectorManager: Globally selected OpenAI model '{current_global_model}' but OPENAI_API_KEY missing.")
+            
+            is_ollama_candidate = current_global_model not in self.config.openai_models and "gguf" not in current_global_model.lower()
+            if is_ollama_candidate:
+                try:
+                    requests.get(f"{ollama_base_url}/api/tags", timeout=2).raise_for_status()
+                    # A more robust check would involve LLMManager.get_local_models() to see if current_global_model is truly available
+                    logger.info(f"VectorManager: Attempting to use globally selected Ollama model '{current_global_model}' for ContextGem.")
+                    self.contextgem_llm = DocumentLLM(model=f"ollama/{current_global_model}", api_base=ollama_base_url)
+                    logger.info(f"VectorManager: ContextGem using globally selected Ollama model '{current_global_model}'.")
+                    return
+                except Exception as e:
+                    logger.warning(f"VectorManager: Failed to use globally selected Ollama model '{current_global_model}' for ContextGem: {e}. Trying preferred.")
 
-            # Priority 2: Try Ollama
-            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            # Fallback to preferred Ollama models
             try:
                 response = requests.get(f"{ollama_base_url}/api/tags", timeout=2)
                 if response.status_code == 200:
-                    models_data = response.json()
-                    available_ollama_models = [model['name'] for model in models_data.get('models', [])]
-                    logger.info(f"VectorManager: Available local Ollama models: {available_ollama_models}")
-
-                    selected_ollama_model = None # Ensure it's reset
-                    ui_selected_model = self.config.current_model if self.config else None
-                    logger.info(f"VectorManager: UI selected model (config.current_model): {ui_selected_model}")
-
-                    # Check if UI selected model is an Ollama model and is available
-                    # Assuming openai_models list is also in self.config if config is present
-                    is_ui_model_openai = self.config and self.config.openai_models and ui_selected_model in self.config.openai_models
-
-                    if ui_selected_model and not is_ui_model_openai and ui_selected_model in available_ollama_models:
-                        selected_ollama_model = ui_selected_model
-                        logger.info(f"VectorManager: UI selected Ollama model '{selected_ollama_model}' is available locally.")
-                    else:
-                        if ui_selected_model and not is_ui_model_openai:
-                             logger.info(f"VectorManager: UI selected Ollama model '{ui_selected_model}' is NOT available locally or not an Ollama model. Checking preferred list.")
-                        # Fallback to preferred Ollama models
-                        preferred_ollama_models = ["mistral:7b", "qwen2.5:7b", "llama3.3:8b", "deepseek-coder:6.7b"]
-                        for model in preferred_ollama_models:
-                            if model in available_ollama_models:
-                                selected_ollama_model = model
-                                logger.info(f"VectorManager: Found preferred Ollama model '{selected_ollama_model}' locally.")
-                                break
-                        if not selected_ollama_model and available_ollama_models:
-                            selected_ollama_model = available_ollama_models[0]
-                            logger.info(f"VectorManager: Using first available Ollama model '{selected_ollama_model}' locally.")
-                    
-                    if selected_ollama_model:
-                        self.llm = DocumentLLM(model=f"ollama/{selected_ollama_model}", api_base=ollama_base_url)
-                        logger.info(f"VectorManager using Ollama model '{selected_ollama_model}' for ContextGem.")
-                        self.embeddings_available = True
+                    available_ollama_models = [m['name'] for m in response.json().get('models', [])]
+                    preferred_ollama = ["mistral:7b", "qwen2.5:7b", "llama3.3:8b"]
+                    for model in preferred_ollama:
+                        if model in available_ollama_models:
+                            self.contextgem_llm = DocumentLLM(model=f"ollama/{model}", api_base=ollama_base_url)
+                            logger.info(f"VectorManager: ContextGem using preferred Ollama model '{model}'.")
+                            return
+                    if available_ollama_models: # Pick first available if no preferred found
+                        self.contextgem_llm = DocumentLLM(model=f"ollama/{available_ollama_models[0]}", api_base=ollama_base_url)
+                        logger.info(f"VectorManager: ContextGem using first available Ollama model '{available_ollama_models[0]}'.")
                         return
             except Exception as e:
-                logger.info(f"VectorManager: Ollama not available or error selecting model: {e}")
+                logger.info(f"VectorManager: Ollama not available or error selecting default model for ContextGem: {e}")
 
-            # Priority 3: Fallback to hardcoded OpenAI model if key exists
-            if openai_api_key:
-                self.llm = DocumentLLM(model="openai/gpt-4o-mini", api_key=openai_api_key)
-                logger.info("VectorManager using fallback OpenAI model 'gpt-4o-mini' for ContextGem.")
-                self.embeddings_available = True
+            if openai_api_key and not self.contextgem_llm: # Final fallback to OpenAI default
+                self.contextgem_llm = DocumentLLM(model="openai/gpt-4o-mini", api_key=openai_api_key)
+                logger.info("VectorManager: ContextGem using fallback OpenAI model 'gpt-4o-mini'.")
                 return
             
-            # Priority 4: Fallback to Anthropic
-            if anthropic_api_key:
-                self.llm = DocumentLLM(model="anthropic/claude-3-5-sonnet", api_key=anthropic_api_key)
-                logger.info("VectorManager using fallback Anthropic model 'claude-3-5-sonnet' for ContextGem.")
-                self.embeddings_available = True
-                return
-
-            logger.warning("VectorManager: ContextGem LLM could not be initialized. No suitable model configuration found. Embeddings/ContextGem features might be limited.")
-            self.embeddings_available = False # Ensure this is set if no LLM is configured
-            self.llm = None
-
+            logger.warning("VectorManager: ContextGem LLM could not be initialized with any suitable model.")
         except Exception as e:
-            logger.error(f"VectorManager: Failed to initialize ContextGem LLM: {e}", exc_info=True)
-            self.embeddings_available = False
-            self.llm = None
+            logger.error(f"VectorManager: General failure during ContextGem LLM initialization: {e}", exc_info=True)
+            self.contextgem_llm = None
+            
+    def _init_llamacpp_pipeline_for_vm(self) -> bool:
+        """Initializes the LlamaCPP model and grammar for VectorManager's tasks."""
+        if not LLAMA_INDEX_AVAILABLE_VM:
+            logger.error("VectorManager: LlamaIndex/LlamaCPP libraries not available.")
+            return False
+        if self.llama_cpp_llm_vm and self.llama_grammar_vm and \
+           hasattr(self.llama_cpp_llm_vm, 'model_path') and self.llama_cpp_llm_vm.model_path == self.config.gguf_model_path:
+            logger.debug("VectorManager: LlamaCPP pipeline for VM already initialized with the correct model path.")
+            return True
+        
+        try:
+            logger.info("VectorManager: Initializing LlamaCPP pipeline for VM tasks...")
+            json_schema_dict_vm = VMSummaryAndTopics.model_json_schema()
+            json_schema_str_vm = json.dumps(json_schema_dict_vm)
+            self.llama_grammar_vm = LlamaGrammar.from_json_schema(json_schema_str_vm)
+            
+            current_gguf_path = self.config.gguf_model_path 
+            if not os.path.exists(current_gguf_path):
+                logger.error(f"VectorManager: LlamaCPP model not found at {current_gguf_path}.")
+                self.llama_grammar_vm = None 
+                self.llama_cpp_llm_vm = None
+                return False
+
+            self.llama_cpp_llm_vm = LlamaCPP(
+                model_path=current_gguf_path,
+                temperature=0.2,
+                max_new_tokens=1024,
+                context_window=self.config.gguf_advanced_context_window,  # Use proper context window
+                generate_kwargs={},  # Don't set grammar by default
+                model_kwargs={
+                    "n_gpu_layers": -1 if self.config.use_gpu_if_available else 0,
+                    "n_batch": self.config.gguf_advanced_batch_size,
+                    "offload_kqv": self.config.gguf_enable_kv_cache_offload,
+                    "use_mlock": self.config.gguf_enable_mlock,
+                    "numa": self.config.gguf_numa_optimization,
+                },
+                messages_to_prompt=messages_to_prompt,
+                completion_to_prompt=completion_to_prompt,
+                verbose=False,  # Reduce verbosity for performance
+            )
+            logger.info(f"VectorManager: LlamaCPP model for VM initialized: {current_gguf_path}")
+            return True
+        except Exception as e:
+            logger.error(f"VectorManager: Failed to initialize LlamaCPP model for VM: {e}", exc_info=True)
+            self.llama_cpp_llm_vm = None
+            self.llama_grammar_vm = None
+            return False
 
     def _create_enhanced_documents_table(self):
-        """Create enhanced table for storing documents with extracted concepts"""
+        # (Content of _create_enhanced_documents_table from previous version)
         with self.db._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS documents_enhanced (
-                        id TEXT PRIMARY KEY,
-                        filename TEXT,
-                        format TEXT,
-                        raw_content TEXT,
-                        processed_content TEXT,
-                        extracted_concepts JSONB,
-                        extracted_aspects JSONB,
-                        metadata JSONB,
+                        id TEXT PRIMARY KEY, filename TEXT, format TEXT,
+                        raw_content TEXT, processed_content TEXT,
+                        extracted_concepts JSONB, extracted_aspects JSONB, metadata JSONB,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
-                # Create indexes for better search performance
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_documents_enhanced_filename 
-                    ON documents_enhanced(filename)
-                ''')
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_documents_enhanced_format 
-                    ON documents_enhanced(format)
-                ''')
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_documents_enhanced_concepts 
-                    ON documents_enhanced USING GIN (extracted_concepts)
-                ''')
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_documents_enhanced_aspects 
-                    ON documents_enhanced USING GIN (extracted_aspects)
-                ''')
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ) ''')
+                # Indexes
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_documents_enhanced_filename ON documents_enhanced(filename)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_documents_enhanced_format ON documents_enhanced(format)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_documents_enhanced_concepts ON documents_enhanced USING GIN (extracted_concepts)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_documents_enhanced_aspects ON documents_enhanced USING GIN (extracted_aspects)')
             conn.commit()
 
     def _setup_extraction_pipeline(self):
-        """Setup simple extraction pipeline for fast document processing"""
-        # Expanded default concepts for richer extraction
+        """Setup ContextGem extraction pipeline for document processing."""
+        if not CONTEXTGEM_AVAILABLE: return
+        # (Content of _setup_extraction_pipeline from previous version)
         self.default_concepts = [
             StringConcept(name="Main Topic", description="Primary topic or subject of the document", singular_occurrence=True, add_references=False),
-            StringConcept(name="Document Type", description="Type or category of the document (e.g., report, article, manual)", singular_occurrence=True, add_references=False),
+            StringConcept(name="Document Type", description="Type or category of the document", singular_occurrence=True, add_references=False),
             StringConcept(name="Key Arguments", description="Main arguments or theses presented", singular_occurrence=False, add_references=False),
             StringConcept(name="Conclusions", description="Main conclusions or outcomes reported", singular_occurrence=False, add_references=False),
             StringConcept(name="Technical Terms", description="Specific technical terms or jargon used", singular_occurrence=False, add_references=False),
@@ -209,899 +284,418 @@ class VectorManager:
             DateConcept(name="Key Dates", description="Significant dates or time periods mentioned", singular_occurrence=False, add_references=False),
             NumericalConcept(name="Key Figures", description="Important numbers or statistics presented", singular_occurrence=False, add_references=False)
         ]
-        
-        # Enhanced pipeline for aspects
-        self.simple_pipeline = DocumentPipeline()
+        self.contextgem_pipeline = DocumentPipeline()
         key_info_concepts = [
-            StringConcept(name="Key Topics", description="Main topics covered in the document", add_references=False, singular_occurrence=False),
-            StringConcept(name="Summary Points", description="Brief summary points or takeaways", add_references=False, singular_occurrence=False)
+            StringConcept(name="Key Topics", description="Main topics covered", add_references=False, singular_occurrence=False),
+            StringConcept(name="Summary Points", description="Brief summary points", add_references=False, singular_occurrence=False)
         ]
-        # Add some of the default concepts to Key Information aspect if relevant
         for concept in self.default_concepts:
             if concept.name in ["Key Arguments", "Conclusions", "Technical Terms"]:
                 key_info_concepts.append(StringConcept(name=concept.name, description=concept.description, add_references=False, singular_occurrence=False))
 
-        self.simple_pipeline.aspects = [
-            Aspect(
-                name="Key Information",
-                description="Core informational content of the document",
-                concepts=key_info_concepts
-            ),
-            Aspect(
-                name="Contextual Elements",
-                description="People, places, and organizations providing context",
-                concepts=[
-                    StringConcept(name="Mentioned People", description="Individuals discussed", add_references=False, singular_occurrence=False),
-                    StringConcept(name="Mentioned Organizations", description="Entities discussed", add_references=False, singular_occurrence=False),
-                    StringConcept(name="Mentioned Locations", description="Places discussed", add_references=False, singular_occurrence=False)
-                ]
-            ),
-            Aspect(
-                name="Document Purpose",
-                description="The intended purpose and audience of the document",
-                concepts=[
-                    StringConcept(name="Stated Purpose", description="The explicit or implicit purpose of the document", add_references=False, singular_occurrence=True),
-                    StringConcept(name="Target Audience", description="The intended audience for the document", add_references=False, singular_occurrence=True)
-                ]
-            )
+        self.contextgem_pipeline.aspects = [
+            Aspect(name="Key Information", description="Core informational content", concepts=key_info_concepts),
+            Aspect(name="Contextual Elements", description="People, places, organizations", concepts=[
+                StringConcept(name="Mentioned People", description="Individuals discussed"),
+                StringConcept(name="Mentioned Organizations", description="Entities discussed"),
+                StringConcept(name="Mentioned Locations", description="Places discussed")
+            ]),
+            Aspect(name="Document Purpose", description="Intended purpose and audience", concepts=[
+                StringConcept(name="Stated Purpose", description="Explicit or implicit purpose"),
+                StringConcept(name="Target Audience", description="Intended audience")
+            ])
         ]
+        
+    def _count_tokens_for_chunking(self, text: str) -> int:
+        """Helper for token counting, prioritizing self.encoding."""
+        if self.encoding and text:
+            try: return len(self.encoding.encode(text))
+            except: pass # Fallback if encoding fails for some reason
+        return len(text) // 3 # Rough char-based fallback
+
+    def _chunk_text_for_llamacpp(self, text: str) -> List[str]:
+        """Chunks text for LlamaCPP, aiming for ~1500 tokens per chunk."""
+        LLAMACPP_CHUNK_TARGET_TOKENS = 1500
+        if not text: return []
+        
+        # Simple split by paragraphs first, then join paragraphs into larger chunks
+        paragraphs = text.split('\n\n')
+        chunks = []
+        current_chunk_paras = []
+        current_token_estimate = 0
+        for para in paragraphs:
+            para_token_estimate = self._count_tokens_for_chunking(para)
+            if current_token_estimate + para_token_estimate > LLAMACPP_CHUNK_TARGET_TOKENS and current_chunk_paras:
+                chunks.append("\n\n".join(current_chunk_paras))
+                current_chunk_paras = []
+                current_token_estimate = 0
+            current_chunk_paras.append(para)
+            current_token_estimate += para_token_estimate
+        if current_chunk_paras: chunks.append("\n\n".join(current_chunk_paras))
+        
+        return chunks if chunks else [text] # Ensure at least one chunk if text is not empty
+
+    def _extract_summary_and_topics_llamacpp(self, text_content: str, filename: str) -> Dict:
+        """Uses LlamaCPP to extract summary and key topics."""
+        if not self.llama_cpp_llm_vm or not self.llama_grammar_vm:
+            if not self._init_llamacpp_pipeline_for_vm():
+                logger.error(f"VectorManager: LlamaCPP pipeline for VM not initialized. Cannot extract summary/topics for {filename}.")
+                return {"summary": "Extraction failed: LlamaCPP pipeline not available.", "topics": []}
+
+        text_chunks = self._chunk_text_for_llamacpp(text_content)
+        if not text_chunks:
+            logger.warning(f"VectorManager: No text chunks to process with LlamaCPP for {filename}.")
+            return {"summary": "No content to process.", "topics": []}
+
+        aggregated_summary_parts = []
+        aggregated_topics = []
+        processed_chunk_count = 0
+
+        for i, chunk in enumerate(text_chunks):
+            logger.info(f"VectorManager: Processing LlamaCPP chunk {i+1}/{len(text_chunks)} for summary/topics of {filename}...")
+            prompt = f"[INST] From the following text, provide a concise summary and list 3-5 main, high-level key topics that represent the core themes of the document. Avoid overly specific details or individual facts as topics.\nText:\n{chunk}\n[/INST]"
+            try:
+                self.llama_cpp_llm_vm.generate_kwargs["grammar"] = self.llama_grammar_vm
+                response = self.llama_cpp_llm_vm.complete(prompt)
+                parsed_output = VMSummaryAndTopics.parse_raw(response.text)
+                
+                if parsed_output.document_summary:
+                    aggregated_summary_parts.append(parsed_output.document_summary)
+                if parsed_output.key_topics:
+                    aggregated_topics.extend(parsed_output.key_topics)
+                processed_chunk_count +=1
+            except Exception as e:
+                logger.error(f"VectorManager: Error processing LlamaCPP chunk {i+1} for {filename}: {e}", exc_info=True)
+        
+        final_summary = " ".join(aggregated_summary_parts) if aggregated_summary_parts else "Summary could not be generated."
+        # Deduplicate topics (simple deduplication by topic string)
+        unique_topics = []
+        seen_topic_strings = set()
+        for vm_topic in aggregated_topics:
+            if vm_topic.topic not in seen_topic_strings:
+                unique_topics.append({"topic": vm_topic.topic}) # Store as simple dict
+                seen_topic_strings.add(vm_topic.topic)
+
+        logger.info(f"VectorManager: LlamaCPP extracted summary and {len(unique_topics)} unique topics from {processed_chunk_count} chunks for {filename}.")
+        return {"summary": final_summary, "topics": unique_topics}
 
     def store_document(self, processed_doc: Dict) -> str:
-        """Store document with fast ContextGem extraction in PostgreSQL"""
-        if not self.embeddings_available:
-            raise ConnectionError("ContextGem not available. Please install contextgem and configure API keys.")
-        
-        # Get the processed content - it should already be extracted text
-        content = processed_doc["content"]
-        
-        # Validate that we have proper text content
-        if not content or not isinstance(content, str):
-            raise ValueError("Invalid content: expected processed text string from document processor")
-        
-        # Check if we somehow still have binary PDF data (shouldn't happen with fixed processor)
-        if content.startswith("%PDF-") and re.search(r'stream|endobj|xref|startxref', content[:1000]):
-            logger.error("CRITICAL: Binary PDF data detected in vector manager - document processor failed to extract text properly")
-            raise ValueError("Document processor failed to extract text from PDF. Please check document_processor.py")
-        
-        # Clean the content of any remaining problematic characters
-        if content:
-            content = content.replace('\x00', '')  # Remove null bytes
-            content = content.replace('\0', '')    # Remove null characters
-            # Also clean other problematic characters while preserving normal text formatting
-            content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
-        
-        # Create a consistent ID based on the original document
-        original_content = processed_doc.get("original_content", content)
-        doc_id = hashlib.sha256(original_content.encode()).hexdigest()
-        
-        # Store document immediately, then try extraction in background
+        """Store document with metadata extraction in PostgreSQL."""
+        content = processed_doc.get("content", "")
+        filename = processed_doc.get("filename", "Unknown Filename")
+        file_format = processed_doc.get("format", "unknown")
+        doc_id = processed_doc.get("raw_content_hash") # Use pre-calculated hash
+
+        if not doc_id: # Fallback if hash not provided
+            doc_id = hashlib.sha256(content.encode('utf-8', 'replace')).hexdigest()
+
+        logger.info(f"VectorManager: Storing document {filename} (ID: {doc_id[:8]}...). Engine: {self.config.processing_engine}")
+
+        # Initial DB insert with minimal data (concepts/aspects will be updated later)
         try:
             with self.db._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute('''
-                        INSERT INTO documents_enhanced (
-                            id, filename, format, raw_content, processed_content,
-                            extracted_concepts, extracted_aspects, metadata, updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                        ON CONFLICT (id) DO UPDATE SET
-                            filename = EXCLUDED.filename,
-                            format = EXCLUDED.format,
-                            raw_content = EXCLUDED.raw_content,
-                            processed_content = EXCLUDED.processed_content,
-                            metadata = EXCLUDED.metadata,
-                            updated_at = CURRENT_TIMESTAMP
-                    ''', (
-                        doc_id,
-                        processed_doc["filename"],
-                        processed_doc["format"],
-                        content,
-                        content,
-                        json.dumps({}),  # Start with empty concepts
-                        json.dumps({}),  # Start with empty aspects
-                        json.dumps(processed_doc.get("metadata", {}))
-                    ))
+                    cursor.execute(
+                        """INSERT INTO documents_enhanced 
+                           (id, filename, format, raw_content, processed_content, metadata, extracted_concepts, extracted_aspects, updated_at)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                           ON CONFLICT (id) DO UPDATE SET
+                           filename = EXCLUDED.filename, format = EXCLUDED.format, raw_content = EXCLUDED.raw_content,
+                           processed_content = EXCLUDED.processed_content, metadata = EXCLUDED.metadata, 
+                           updated_at = CURRENT_TIMESTAMP""",
+                        (doc_id, filename, file_format, processed_doc.get("original_content", content), content, 
+                         json.dumps(processed_doc.get("metadata", {})), json.dumps({}), json.dumps({}))
+                    )
                 conn.commit()
-            
-            logger.info(f"Document {doc_id} stored successfully")
-            
-            # First, check if the document processor already extracted concepts
-            extracted_concepts = {}
-            
-            # Check if document processor provided concepts
-            if "concepts" in processed_doc and processed_doc["concepts"]:
-                logger.info(f"Using concepts from document processor: {len(processed_doc['concepts'])} concepts found")
-                
-                # Convert document processor concepts to ContextGem format
-                for concept in processed_doc["concepts"]:
-                    concept_name = concept.get("concept_name", "Extracted Concept")
-                    concept_content = concept.get("content", "")
+            logger.info(f"VectorManager: Initial database store for {filename} (ID: {doc_id[:8]}) successful.")
+        except Exception as e:
+            logger.error(f"VectorManager: Failed initial database store for {filename} (ID: {doc_id[:8]}): {e}", exc_info=True)
+            raise ConnectionError(f"Failed to store document: {e}")
+
+        # --- Metadata Extraction (Summary, Topics/Aspects) ---
+        extracted_concepts_json = {}
+        extracted_aspects_json = {} # For ContextGem aspects or LlamaCPP summary
+
+        # Standardized format for extracted_concepts_json: {"Concept Name": {"items": [{"value": "...", "justification": "..."}]}}
+        
+        # 1. Process concepts from DocumentProcessor (if any)
+        if "concepts" in processed_doc and processed_doc["concepts"]:
+            logger.info(f"VectorManager: Processing {len(processed_doc['concepts'])} concepts from DocumentProcessor for {filename}.")
+            for concept_item_dict in processed_doc["concepts"]: # These are List[Dict]
+                actual_concept_name = concept_item_dict.get('concept_name', 'Uncategorized DP Concepts')
+                content_value = concept_item_dict.get('content')
+                if content_value and content_value.strip():
+                    if actual_concept_name not in extracted_concepts_json:
+                        extracted_concepts_json[actual_concept_name] = {"items": []}
                     
-                    if concept_content and concept_content.strip():
-                        if concept_name not in extracted_concepts:
-                            extracted_concepts[concept_name] = {"items": []}
-                        
-                        extracted_concepts[concept_name]["items"].append({
-                            "value": concept_content,
-                            "references": [],
-                            "justification": concept.get("metadata", {}).get("extraction_method", "Document processor extraction")
+                    current_items = extracted_concepts_json[actual_concept_name]["items"]
+                    # Avoid duplicates based on 'value'
+                    if not any(item.get("value") == content_value for item in current_items):
+                        current_items.append({
+                            "value": content_value,
+                            "references": concept_item_dict.get("references", []), # Preserve if available
+                            "justification": concept_item_dict.get("metadata", {}).get("extraction_method", "doc_processor")
                         })
-                
-                logger.info(f"Converted document processor concepts: {list(extracted_concepts.keys())}")
-            
-            # If no concepts from document processor, try ContextGem extraction
-            if not extracted_concepts:
-                try:
-                    logger.info(f"No concepts from document processor, trying ContextGem extraction for {doc_id}")
-                    extracted_concepts = self._fast_concept_extraction(content)
-                    logger.info(f"ContextGem extraction result: {extracted_concepts}")
-                    
-                except Exception as extraction_error:
-                    logger.warning(f"ContextGem extraction failed for {doc_id}: {str(extraction_error)}")
-            
-            # If still no concepts, use fallback
-            if not extracted_concepts:
-                logger.info(f"Using fallback concept extraction for {doc_id}")
-                try:
-                    extracted_concepts = self._create_fallback_concepts(content, processed_doc.get("filename", "Unknown"))
-                    logger.info(f"Fallback extraction result: {extracted_concepts}")
-                except Exception as fallback_error:
-                    logger.error(f"Fallback concept creation failed: {str(fallback_error)}")
-                    # Create minimal concepts as last resort
-                    extracted_concepts = {
-                        "Main Topic": {
-                            "items": [{"value": "Document Content", "references": [], "justification": "Default fallback"}]
-                        },
-                        "Document Type": {
-                            "items": [{"value": "Text Document", "references": [], "justification": "Default fallback"}]
-                        }
-                    }
-            
-            # Always update with some concepts
-            try:
-                with self.db._get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute('''
-                            UPDATE documents_enhanced 
-                            SET extracted_concepts = %s, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                        ''', (json.dumps(extracted_concepts), doc_id))
-                    conn.commit()
-                logger.info(f"Successfully updated document {doc_id} with concepts: {list(extracted_concepts.keys())}")
-            except Exception as update_error:
-                logger.error(f"Failed to update document {doc_id} with concepts: {str(update_error)}")
-            
-            return doc_id
-            
-        except Exception as e:
-            logger.error(f"Failed to store document: {str(e)}")
-            raise ConnectionError(f"Failed to store document: {str(e)}")
 
-    def _fast_concept_extraction(self, content: str) -> Dict:
-        """Fast concept extraction with minimal processing"""
+        # 2. Perform additional extraction based on engine (for VectorManager's own summary/topics)
+        if self.config.processing_engine == "llamacpp_gguf":
+            if LLAMA_INDEX_AVAILABLE_VM:
+                logger.info(f"VectorManager: Using LlamaCPP GGUF for additional summary/topic extraction for {filename}.")
+                llamacpp_output = self._extract_summary_and_topics_llamacpp(content, filename) # Returns {"summary": ..., "topics": [{"topic": ...}]}
+                if llamacpp_output:
+                    if llamacpp_output.get("summary"):
+                        extracted_aspects_json["OverallSummary_LlamaCPP"] = {"summary_text": llamacpp_output.get("summary")}
+                    
+                    llamacpp_topics = llamacpp_output.get("topics", [])
+                    if llamacpp_topics:
+                        group_name = "Key Topics (GGUF)"
+                        if group_name not in extracted_concepts_json:
+                            extracted_concepts_json[group_name] = {"items": []}
+                        current_items = extracted_concepts_json[group_name]["items"]
+                        existing_values = {item.get("value") for item in current_items}
+                        for topic_item in llamacpp_topics: # topic_item is {"topic": "..."}
+                            topic_value = topic_item.get("topic")
+                            if topic_value and topic_value.strip() and topic_value not in existing_values:
+                                current_items.append({"value": topic_value, "justification": "vm_llamacpp_topic"})
+            else:
+                logger.error("VectorManager: LlamaCPP GGUF engine selected, but LlamaIndex/LlamaCPP libraries not available. Skipping VM LlamaCPP extraction.")
+        
+        elif self.config.processing_engine == "contextgem":
+            if CONTEXTGEM_AVAILABLE and self.contextgem_llm and self.contextgem_pipeline:
+                logger.info(f"VectorManager: Using ContextGem pipeline for aspect/concept extraction for {filename}.")
+                try:
+                    cg_doc_internal = ContextGemInternalDocument(raw_text=content)
+                    # The pipeline aspects are added to the document, and then concepts are extracted.
+                    # The `extract_concepts_from_document` method modifies cg_doc_internal in place.
+                    if self.contextgem_pipeline and hasattr(self.contextgem_pipeline, 'aspects'):
+                        cg_doc_internal.add_aspects(self.contextgem_pipeline.aspects) # Add aspects defined in the pipeline
+                    
+                    # This call modifies cg_doc_internal by extracting concepts based on its defined aspects and any globally added concepts.
+                    self.contextgem_llm.extract_concepts_from_document(cg_doc_internal)
+                    
+                    # Process aspects from ContextGem (which are now populated in cg_doc_internal)
+                    if hasattr(cg_doc_internal, 'aspects') and cg_doc_internal.aspects:
+                        for aspect_obj in cg_doc_internal.aspects:
+                            aspect_items_for_json = []
+                            if hasattr(aspect_obj, 'concepts') and aspect_obj.concepts:
+                                for concept_obj_in_aspect in aspect_obj.concepts:
+                                    if hasattr(concept_obj_in_aspect, 'extracted_items') and concept_obj_in_aspect.extracted_items:
+                                        for item in concept_obj_in_aspect.extracted_items:
+                                            item_value = getattr(item, 'value', str(item))
+                                            if item_value and str(item_value).strip():
+                                                aspect_items_for_json.append({"value": str(item_value), "source_concept": concept_obj_in_aspect.name})
+                            if aspect_items_for_json:
+                                extracted_aspects_json[aspect_obj.name] = {"items": aspect_items_for_json}
+
+                    # Process concepts from ContextGem (these are usually what's defined in self.default_concepts)
+                    if hasattr(cg_doc_internal, 'concepts') and cg_doc_internal.concepts:
+                         for concept_obj in cg_doc_internal.concepts: # These are the top-level concepts added via cg_doc.add_concepts()
+                            concept_group_name = concept_obj.name or "Uncategorized CG"
+                            if hasattr(concept_obj, 'extracted_items') and concept_obj.extracted_items:
+                                if concept_group_name not in extracted_concepts_json:
+                                    extracted_concepts_json[concept_group_name] = {"items": []}
+                                current_items = extracted_concepts_json[concept_group_name]["items"]
+                                existing_values = {item.get("value") for item in current_items}
+                                for item in concept_obj.extracted_items:
+                                    item_value = getattr(item, 'value', str(item))
+                                    if item_value and str(item_value).strip() and item_value not in existing_values:
+                                        current_items.append({"value": str(item_value), "justification": "vm_contextgem"})
+                except Exception as e:
+                    logger.error(f"VectorManager: ContextGem pipeline extraction failed for {filename}: {e}", exc_info=True)
+            else:
+                logger.warning(f"VectorManager: ContextGem not available or LLM/pipeline not set up. Skipping ContextGem pipeline extraction for {filename}.")
+
+        # Update DB with extracted metadata
         try:
-            # Limit content size for speed
-            if len(content) > 20000:  # Smaller limit for speed
-                content = content[:20000] + "..."
-            
-            # Create minimal document
-            cg_doc = Document(raw_text=content)
-            
-            # Add all default concepts for a richer fast extraction
-            cg_doc.add_concepts(self.default_concepts)
-            
-            # Quick extraction with timeout
-            # This will attempt to extract all concepts defined in self.default_concepts
-            extracted_doc = self.llm.extract_concepts_from_document(cg_doc)
-            
-            # Process results
-            extracted_concepts = {}
-            concepts_list = []
-            
-            if hasattr(extracted_doc, 'concepts'):
-                concepts_list = extracted_doc.concepts
-            elif isinstance(extracted_doc, list):
-                concepts_list = extracted_doc
-            else:
-                concepts_list = getattr(cg_doc, 'concepts', [])
-            
-            for concept in concepts_list:
-                if hasattr(concept, 'name') and hasattr(concept, 'extracted_items'):
-                    if concept.extracted_items:  # Only add if items exist
-                        extracted_concepts[concept.name] = {
-                            "items": [
-                                {
-                                    "value": getattr(item, 'value', str(item)),
-                                    "references": [],  # Skip references for speed
-                                    "justification": None  # Skip justification for speed
-                                }
-                                for item in concept.extracted_items
-                            ]
-                        }
-            
-            return extracted_concepts
-            
+            with self.db._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """UPDATE documents_enhanced SET 
+                           extracted_concepts = %s, extracted_aspects = %s, updated_at = CURRENT_TIMESTAMP
+                           WHERE id = %s""",
+                        (json.dumps(extracted_concepts_json), json.dumps(extracted_aspects_json), doc_id)
+                    )
+                conn.commit()
+            logger.info(f"VectorManager: Successfully updated {filename} (ID: {doc_id[:8]}) with extracted metadata.")
         except Exception as e:
-            logger.warning(f"Fast extraction failed: {str(e)}")
-            return {}
+            logger.error(f"VectorManager: Failed to update {filename} (ID: {doc_id[:8]}) with extracted metadata: {e}", exc_info=True)
+            
+        return doc_id
 
-    def _process_large_document(self, content: str) -> tuple:
-        """Process large documents by chunking"""
-        import time
-        
-        # Split content into chunks
-        max_chunk_size = 30000  # Conservative size for processing
-        chunks = []
-        
-        # Try to split by paragraphs first
-        paragraphs = content.split('\n\n')
-        current_chunk = ""
-        
-        for paragraph in paragraphs:
-            if len(current_chunk) + len(paragraph) < max_chunk_size:
-                current_chunk += paragraph + '\n\n'
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                current_chunk = paragraph + '\n\n'
-        
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-        
-        # If chunks are still too large, split by sentences
-        final_chunks = []
-        for chunk in chunks:
-            if len(chunk) > max_chunk_size:
-                sentences = chunk.split('. ')
-                current_chunk = ""
-                for sentence in sentences:
-                    if len(current_chunk) + len(sentence) < max_chunk_size:
-                        current_chunk += sentence + '. '
-                    else:
-                        if current_chunk:
-                            final_chunks.append(current_chunk.strip())
-                        current_chunk = sentence + '. '
-                if current_chunk:
-                    final_chunks.append(current_chunk.strip())
-            else:
-                final_chunks.append(chunk)
-        
-        logger.info(f"Processing document in {len(final_chunks)} chunks")
-        
-        # Process each chunk and merge results
-        all_concepts = {}
-        all_aspects = {}
-        
-        for i, chunk in enumerate(final_chunks):
-            logger.info(f"Processing chunk {i+1}/{len(final_chunks)}")
-            try:
-                # Add delay to avoid rate limiting
-                if i > 0:
-                    time.sleep(2)  # 2 second delay between chunks
-                
-                chunk_concepts, chunk_aspects = self._process_document_chunk(chunk)
-                
-                # Merge concepts
-                for concept_name, concept_data in chunk_concepts.items():
-                    if concept_name not in all_concepts:
-                        all_concepts[concept_name] = {"items": []}
-                    
-                    # Add unique items
-                    existing_values = {item["value"] for item in all_concepts[concept_name]["items"]}
-                    for item in concept_data["items"]:
-                        if item["value"] not in existing_values:
-                            all_concepts[concept_name]["items"].append(item)
-                
-                # Merge aspects
-                for aspect_name, aspect_data in chunk_aspects.items():
-                    if aspect_name not in all_aspects:
-                        all_aspects[aspect_name] = {"items": [], "concepts": {}}
-                    
-                    # Add unique aspect items
-                    existing_values = {item["value"] for item in all_aspects[aspect_name]["items"]}
-                    for item in aspect_data["items"]:
-                        if item["value"] not in existing_values:
-                            all_aspects[aspect_name]["items"].append(item)
-                    
-                    # Merge aspect concepts
-                    for concept_name, concept_data in aspect_data.get("concepts", {}).items():
-                        if concept_name not in all_aspects[aspect_name]["concepts"]:
-                            all_aspects[aspect_name]["concepts"][concept_name] = {"items": []}
-                        
-                        existing_values = {item["value"] for item in all_aspects[aspect_name]["concepts"][concept_name]["items"]}
-                        for item in concept_data["items"]:
-                            if item["value"] not in existing_values:
-                                all_aspects[aspect_name]["concepts"][concept_name]["items"].append(item)
-                
-            except Exception as e:
-                logger.warning(f"Failed to process chunk {i+1}: {str(e)}")
-                continue
-        
-        return all_concepts, all_aspects
-
-    def _process_document_chunk(self, content: str) -> tuple:
-        """Process a single document chunk with ContextGem"""
-        import time
-        
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # Create ContextGem Document
-                cg_doc = Document(raw_text=content)
-                
-                # First extract concepts only (simpler pipeline)
-                cg_doc.add_concepts(self.default_concepts)
-                
-                # Extract concepts first
-                extracted_doc = self.llm.extract_concepts_from_document(cg_doc)
-                
-                # Debug logging
-                logger.debug(f"Extracted doc type: {type(extracted_doc)}")
-                logger.debug(f"Extracted doc attributes: {dir(extracted_doc) if hasattr(extracted_doc, '__dict__') else 'No attributes'}")
-                
-                # Process extracted concepts - handle different return types
-                extracted_concepts = {}
-                
-                # Check if extracted_doc is the document itself or has concepts attribute
-                if hasattr(extracted_doc, 'concepts'):
-                    concepts_list = extracted_doc.concepts
-                elif isinstance(extracted_doc, list):
-                    # If it returns a list, it might be the concepts directly
-                    concepts_list = extracted_doc
-                else:
-                    # Try to get concepts from the original document
-                    concepts_list = getattr(cg_doc, 'concepts', [])
-                
-                logger.debug(f"Concepts list type: {type(concepts_list)}, length: {len(concepts_list) if hasattr(concepts_list, '__len__') else 'unknown'}")
-                
-                for concept in concepts_list:
-                    logger.debug(f"Processing concept: {type(concept)}, name: {getattr(concept, 'name', 'no name')}")
-                    if hasattr(concept, 'name') and hasattr(concept, 'extracted_items'):
-                        extracted_concepts[concept.name] = {
-                            "items": [
-                                {
-                                    "value": getattr(item, 'value', str(item)),
-                                    "references": getattr(item, 'reference_sentences', []) or getattr(item, 'reference_paragraphs', []),
-                                    "justification": getattr(item, 'justification', None)
-                                }
-                                for item in concept.extracted_items
-                            ]
-                        }
-                
-                # Now extract aspects separately - with better error handling
-                extracted_aspects = {}
-                try:
-                    # Create new document for aspects
-                    cg_doc_aspects = Document(raw_text=content)
-                    cg_doc_aspects.assign_pipeline(self.default_pipeline)
-                    
-                    # Extract aspects
-                    extracted_doc_aspects = self.llm.extract_aspects_from_document(cg_doc_aspects)
-                    
-                    # Handle different return types for aspects
-                    aspects_list = []
-                    if hasattr(extracted_doc_aspects, 'aspects'):
-                        aspects_list = extracted_doc_aspects.aspects
-                    elif isinstance(extracted_doc_aspects, list):
-                        aspects_list = extracted_doc_aspects
-                    else:
-                        # Try to get aspects from the document
-                        aspects_list = getattr(cg_doc_aspects, 'aspects', [])
-                    
-                    for aspect in aspects_list:
-                        if hasattr(aspect, 'name') and hasattr(aspect, 'extracted_items'):
-                            aspect_data = {
-                                "items": [
-                                    {
-                                        "value": getattr(item, 'value', str(item)),
-                                        "references": getattr(item, 'reference_sentences', []) or getattr(item, 'reference_paragraphs', [])
-                                    }
-                                    for item in aspect.extracted_items
-                                ],
-                                "concepts": {}
-                            }
-                            
-                            # Extract aspect concepts
-                            if hasattr(aspect, 'concepts'):
-                                for concept in aspect.concepts:
-                                    if hasattr(concept, 'name') and hasattr(concept, 'extracted_items'):
-                                        aspect_data["concepts"][concept.name] = {
-                                            "items": [
-                                                {
-                                                    "value": getattr(item, 'value', str(item)),
-                                                    "references": getattr(item, 'reference_sentences', []) or getattr(item, 'reference_paragraphs', []),
-                                                    "justification": getattr(item, 'justification', None)
-                                                }
-                                                for item in concept.extracted_items
-                                            ]
-                                        }
-                            
-                            extracted_aspects[aspect.name] = aspect_data
-                
-                except Exception as aspect_error:
-                    logger.warning(f"Failed to extract aspects: {str(aspect_error)}")
-                    # Continue with just concepts
-                
-                logger.info(f"Successfully extracted {len(extracted_concepts)} concepts and {len(extracted_aspects)} aspects")
-                return extracted_concepts, extracted_aspects
-                
-            except Exception as e:
-                error_msg = str(e).lower()
-                logger.warning(f"Attempt {attempt + 1} failed with error: {str(e)}")
-                
-                if "context window" in error_msg or "token" in error_msg:
-                    logger.warning(f"Attempt {attempt + 1}: Context window exceeded, content too large")
-                    if attempt < max_retries - 1:
-                        # Try with smaller content
-                        content = content[:len(content)//2]  # Reduce content size by half
-                        logger.info(f"Reducing content size to {len(content)} characters")
-                        continue
-                elif "rate limit" in error_msg or "too many requests" in error_msg:
-                    logger.warning(f"Attempt {attempt + 1}: Rate limit hit, waiting...")
-                    if attempt < max_retries - 1:
-                        time.sleep(10 * (attempt + 1))  # Exponential backoff
-                        continue
-                elif "'list' object has no attribute" in str(e):
-                    logger.warning(f"Attempt {attempt + 1}: ContextGem API returned unexpected format")
-                    if attempt < max_retries - 1:
-                        time.sleep(2)  # Wait before retry
-                        continue
-                
-                if attempt < max_retries - 1:
-                    time.sleep(2)  # Wait before retry
-                    continue
-                else:
-                    # Final attempt failed, return empty results
-                    logger.error(f"All attempts failed for chunk processing: {str(e)}")
-                    return {}, {}
-        
-        return {}, {}
-
-    def _create_fallback_concepts(self, content: str, filename: str) -> Dict:
-        """Create simple fallback concepts when ContextGem extraction fails"""
-        try:
-            # Extract simple concepts from content
-            words = content.split()
-            
-            # Get first few meaningful words for main topic
-            meaningful_words = []
-            for word in words[:50]:  # Look at first 50 words
-                word = word.strip('.,!?;:"()[]{}').lower()
-                if len(word) > 3 and word.isalpha():  # Only meaningful words
-                    meaningful_words.append(word.title())
-                if len(meaningful_words) >= 5:
-                    break
-            
-            main_topic = " ".join(meaningful_words[:3]) if meaningful_words else "Unknown Topic"
-            
-            # Determine document type from filename or content
-            doc_type = "Document"
-            filename_lower = filename.lower()
-            
-            if any(word in filename_lower for word in ['python', 'programming', 'code']):
-                doc_type = "Programming Guide"
-            elif any(word in filename_lower for word in ['web', 'html', 'css', 'javascript']):
-                doc_type = "Web Development"
-            elif any(word in filename_lower for word in ['report', 'analysis']):
-                doc_type = "Report"
-            elif any(word in filename_lower for word in ['manual', 'guide', 'tutorial']):
-                doc_type = "Manual"
-            elif filename_lower.endswith('.pdf'):
-                doc_type = "PDF Document"
-            
-            # Create fallback concepts
-            fallback_concepts = {
-                "Main Topic": {
-                    "items": [
-                        {
-                            "value": main_topic,
-                            "references": [],
-                            "justification": "Extracted from document content"
-                        }
-                    ]
-                },
-                "Document Type": {
-                    "items": [
-                        {
-                            "value": doc_type,
-                            "references": [],
-                            "justification": "Determined from filename and content analysis"
-                        }
-                    ]
-                }
-            }
-            
-            logger.info(f"Created fallback concepts: {list(fallback_concepts.keys())}")
-            return fallback_concepts
-            
-        except Exception as e:
-            logger.error(f"Failed to create fallback concepts: {str(e)}")
-            return {}
-
+    # ... (rest of the methods: list_documents, get_document, delete_document, etc. remain largely unchanged)
+    # Need to ensure they correctly query and present data from `extracted_concepts` and `extracted_aspects`
+    
     def list_documents(self) -> List[Dict]:
         """List all stored documents with metadata and extraction summaries"""
+        # (Content of list_documents from previous version, adapted for new JSON structure)
         with self.db._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute('''
-                    SELECT id, filename, format, metadata, extracted_concepts, created_at
-                    FROM documents_enhanced
-                    ORDER BY created_at DESC
-                ''')
-                results = cursor.fetchall()
-                
-                docs_list = []
-                for row in results:
-                    doc_info = {
-                        "id": row[0],
-                        "filename": row[1] or "Unknown Document",
-                        "format": row[2] or "Unknown",
-                        "metadata": row[3] or {},
-                        "created_at": row[5].isoformat() if row[5] else None
-                    }
-                    
-                    # Add summary of extracted concepts
-                    if row[4] and isinstance(row[4], dict) and len(row[4]) > 0:  # extracted_concepts
-                        concepts = row[4]
-                        
-                        # Look for Main Topic (new) or Main Subject (legacy)
-                        main_topic_data = (
-                            concepts.get("Main Topic") or 
-                            concepts.get("Main Subject") or 
-                            {}
-                        )
-                        main_topic_value = "Not processed yet"
-                        if main_topic_data and main_topic_data.get("items"):
-                            main_topic_value = main_topic_data["items"][0].get("value", "Unknown")
-                        
-                        # Look for Document Type
-                        doc_type_data = concepts.get("Document Type", {})
-                        doc_type_value = "Unknown"
-                        if doc_type_data and doc_type_data.get("items"):
-                            doc_type_value = doc_type_data["items"][0].get("value", "Unknown")
-                        
-                        # Determine if extraction was successful
-                        has_meaningful_concepts = any(
-                            concept_data.get("items") and len(concept_data["items"]) > 0 
-                            and any(item.get("value", "").strip() for item in concept_data["items"])
-                            for concept_data in concepts.values() 
-                            if isinstance(concept_data, dict)
-                        )
-                        
-                        # Simplified status determination - if we have meaningful concepts, it's completed
-                        extraction_status = "completed" if has_meaningful_concepts else "pending"
-                        
-                        doc_info["extracted_summary"] = {
-                            "concept_count": len(concepts),
-                            "main_topic": main_topic_value,
-                            "document_type": doc_type_value,
-                            "extraction_status": extraction_status
-                        }
-                    else:
-                        # Try to trigger concept extraction for old documents without concepts
+                cursor.execute("SELECT id, filename, format, metadata, extracted_concepts, extracted_aspects, created_at FROM documents_enhanced ORDER BY created_at DESC")
+                docs = []
+                for row in cursor.fetchall():
+                    doc_dict = dict(zip([desc[0] for desc in cursor.description], row))
+                    # Create a simple summary for display
+                    summary_display = {}
+                    if doc_dict.get('extracted_aspects'):
                         try:
-                            logger.info(f"Triggering background concept extraction for document {row[0]}")
-                            # Get the document content and try extraction
-                            doc_data = self.get_document(row[0])
-                            if doc_data and doc_data.get("content"):
-                                # Use fallback concept creation immediately
-                                fallback_concepts = self._create_fallback_concepts(
-                                    doc_data["content"], 
-                                    doc_data.get("filename", "Unknown")
-                                )
-                                
-                                if fallback_concepts:
-                                    # Update the database immediately
-                                    with self.db._get_connection() as conn:
-                                        with conn.cursor() as cursor:
-                                            cursor.execute('''
-                                                UPDATE documents_enhanced 
-                                                SET extracted_concepts = %s, updated_at = CURRENT_TIMESTAMP
-                                                WHERE id = %s
-                                            ''', (json.dumps(fallback_concepts), row[0]))
-                                        conn.commit()
-                                    
-                                    # Return the updated status
-                                    main_topic = fallback_concepts.get("Main Topic", {}).get("items", [{}])[0].get("value", "Unknown")
-                                    doc_type = fallback_concepts.get("Document Type", {}).get("items", [{}])[0].get("value", "Unknown")
-                                    
-                                    doc_info["extracted_summary"] = {
-                                        "concept_count": len(fallback_concepts),
-                                        "main_topic": main_topic,
-                                        "document_type": doc_type,
-                                        "extraction_status": "completed"
-                                    }
-                                else:
-                                    doc_info["extracted_summary"] = {
-                                        "concept_count": 0,
-                                        "main_topic": "No content available",
-                                        "document_type": "Unknown",
-                                        "extraction_status": "failed"
-                                    }
-                            else:
-                                doc_info["extracted_summary"] = {
-                                    "concept_count": 0,
-                                    "main_topic": "No content available",
-                                    "document_type": "Unknown",
-                                    "extraction_status": "failed"
-                                }
-                        except Exception as e:
-                            logger.error(f"Failed to process document {row[0]} concepts: {str(e)}")
-                            doc_info["extracted_summary"] = {
-                                "concept_count": 0,
-                                "main_topic": "Processing failed",
-                                "document_type": "Unknown",
-                                "extraction_status": "failed"
-                            }
+                            aspects = doc_dict['extracted_aspects'] # Already JSONB from DB
+                            if "OverallSummary_LlamaCPP" in aspects and aspects["OverallSummary_LlamaCPP"].get("summary_text"):
+                                summary_display['main_topic'] = aspects["OverallSummary_LlamaCPP"]["summary_text"][:100] + "..." # Show part of summary
+                            elif "Key Information" in aspects and aspects["Key Information"].get("items"):
+                                summary_display['main_topic'] = aspects["Key Information"]["items"][0]['value'][:100] + "..."
+                        except Exception: pass # Ignore parsing errors for summary display
                     
-                    docs_list.append(doc_info)
-                
-                return docs_list
+                    if doc_dict.get('extracted_concepts'):
+                        try:
+                            concepts = doc_dict['extracted_concepts']
+                            gguf_topics_key = "Key Topics (GGUF)"
+                            
+                            if gguf_topics_key in concepts and isinstance(concepts[gguf_topics_key], dict) and concepts[gguf_topics_key].get("items"):
+                                items = concepts[gguf_topics_key]["items"]
+                                summary_display['concept_count'] = len(items)
+                                if not summary_display.get('main_topic') and items:
+                                    # Ensure 'value' exists and is not None before trying to access it
+                                    first_item_value = items[0].get('value')
+                                    if first_item_value:
+                                        summary_display['main_topic'] = str(first_item_value) # Ensure it's a string
+                            else:
+                                # Fallback: Iterate over other concepts to find a main topic and count
+                                all_concept_items_count = 0
+                                found_main_topic_fallback = False
+                                # Define concept groups to exclude from being considered as the 'main_topic'
+                                excluded_concept_groups_for_main_topic = ["Document Type", "Key Arguments", "Conclusions", "Technical Terms", "Key People", "Key Organizations", "Locations", "Key Dates", "Key Figures"]
+                                
+                                for concept_group_name, concept_group_data in concepts.items():
+                                    if isinstance(concept_group_data, dict) and "items" in concept_group_data:
+                                        current_items = concept_group_data["items"]
+                                        if isinstance(current_items, list):
+                                            all_concept_items_count += len(current_items)
+                                            # Check if this concept group should be considered for the main_topic
+                                            if not summary_display.get('main_topic') and \
+                                               not found_main_topic_fallback and \
+                                               current_items and \
+                                               concept_group_name not in excluded_concept_groups_for_main_topic:
+                                                
+                                                first_item_value_fallback = current_items[0].get('value')
+                                                if first_item_value_fallback:
+                                                    summary_display['main_topic'] = str(first_item_value_fallback)
+                                                    found_main_topic_fallback = True
+                                
+                                if all_concept_items_count > 0:
+                                    summary_display['concept_count'] = all_concept_items_count
+                        except Exception: pass # Closes the try block from line 549
+                    
+                    doc_dict['extracted_summary'] = summary_display
+                    docs.append(doc_dict)
+                return docs # Closes the for loop from line 535
+            # Closes 'with conn.cursor()' from line 532
+        # Closes 'with self.db._get_connection()' from line 531
+    # End of list_documents method
 
-    def get_document(self, doc_id: str) -> Optional[Dict]:
-        """Retrieve document by ID with full extraction data"""
+    def update_document_concepts(self, doc_id: str, concepts_to_update: Dict) -> bool:
+        """
+        Updates specific concepts for an existing document.
+        Fetches the document, merges the new concepts with existing ones, and saves back.
+        """
+        logger.info(f"VectorManager: Attempting to update concepts for document ID {doc_id[:8]}...")
+        existing_doc_data = self.get_document(doc_id)
+        if not existing_doc_data:
+            logger.error(f"VectorManager: Document with ID {doc_id[:8]} not found. Cannot update concepts.")
+            return False
+
+        current_concepts = existing_doc_data.get('extracted_concepts', {})
+        if not isinstance(current_concepts, dict): # Should be a dict from JSONB
+            logger.warning(f"VectorManager: Existing concepts for doc ID {doc_id[:8]} is not a dict. Re-initializing.")
+            current_concepts = {}
+        
+        # Merge new concepts into current concepts
+        # This will overwrite existing keys in current_concepts with those from concepts_to_update
+        for key, value in concepts_to_update.items():
+            current_concepts[key] = value
+            logger.info(f"VectorManager: Updating concept group '{key}' for doc ID {doc_id[:8]}.")
+
+        try:
+            with self.db._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """UPDATE documents_enhanced SET
+                           extracted_concepts = %s, updated_at = CURRENT_TIMESTAMP
+                           WHERE id = %s""",
+                        (json.dumps(current_concepts), doc_id)
+                    )
+                conn.commit()
+            logger.info(f"VectorManager: Successfully updated concepts for document ID {doc_id[:8]}.")
+            return True
+        except Exception as e:
+            logger.error(f"VectorManager: Failed to update concepts for document ID {doc_id[:8]}: {e}", exc_info=True)
+            return False
+                                
+
+    def get_document(self, doc_id: str) -> PyOptional[Dict]:
+        # (Content of get_document from previous version)
         with self.db._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute('''
-                    SELECT raw_content, filename, format, metadata, 
-                           extracted_concepts, extracted_aspects
-                    FROM documents_enhanced
-                    WHERE id = %s
-                ''', (doc_id,))
-                result = cursor.fetchone()
-                
-                if result:
-                    return {
-                        "content": result[0],
-                        "filename": result[1],
-                        "format": result[2],
-                        "metadata": result[3],
-                        "extracted_concepts": result[4],
-                        "extracted_aspects": result[5]
-                    }
+                cursor.execute("SELECT * FROM documents_enhanced WHERE id = %s", (doc_id,))
+                row = cursor.fetchone()
+                if row:
+                    return dict(zip([desc[0] for desc in cursor.description], row))
                 return None
 
     def delete_document(self, doc_id: str) -> bool:
-        """Delete document by ID"""
+        # (Content of delete_document from previous version)
         with self.db._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute('''
-                    DELETE FROM documents_enhanced
-                    WHERE id = %s
-                    RETURNING id
-                ''', (doc_id,))
-                result = cursor.fetchone()
-                conn.commit()
-                return result is not None
+                cursor.execute("DELETE FROM documents_enhanced WHERE id = %s", (doc_id,))
+                return cursor.rowcount > 0
+            conn.commit() # Ensure commit is outside cursor block if not autocommit
+        return False # Should not reach here if successful
 
+    # Placeholder for other methods like concept_search, aspect_search, get_retriever, get_stats
+    # These would need to be adapted to the new JSON structures in extracted_concepts/aspects
     def concept_search(self, query: str, concept_type: str = None, k: int = 5) -> List[Dict]:
-        """Search documents by extracted concepts"""
-        if not self.embeddings_available:
-            return []
-        
-        search_conditions = []
-        params = []
-        
-        # Add text search in concepts
-        search_conditions.append("extracted_concepts::text ILIKE %s")
-        params.append(f"%{query}%")
-        
-        # Add concept type filter if specified
-        if concept_type:
-            search_conditions.append("extracted_concepts ? %s")
-            params.append(concept_type)
-        
-        params.append(k)
-        
-        with self.db._get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(f'''
-                    SELECT id, filename, format, extracted_concepts, extracted_aspects,
-                           ts_rank(to_tsvector('english', raw_content), plainto_tsquery('english', %s)) as relevance
-                    FROM documents_enhanced
-                    WHERE {' AND '.join(search_conditions)}
-                    ORDER BY relevance DESC
-                    LIMIT %s
-                ''', [query] + params)
-                
-                results = cursor.fetchall()
-                return [{
-                    "id": row[0],
-                    "filename": row[1],
-                    "format": row[2],
-                    "extracted_concepts": row[3],
-                    "extracted_aspects": row[4],
-                    "relevance": float(row[5]) if row[5] else 0.0
-                } for row in results]
-
-    def similarity_search(self, query: str, k: int = 5) -> List[Dict]:
-        """Find similar documents using concept-based search"""
-        return self.concept_search(query, k=k)
+        logger.warning("Concept search not fully adapted to new JSON structures yet.")
+        return []
 
     def aspect_search(self, aspect_name: str, query: str = None, k: int = 5) -> List[Dict]:
-        """Search documents by specific aspect"""
-        if not self.embeddings_available:
-            return []
+        logger.warning("Aspect search not fully adapted to new JSON structures yet.")
+        return []
         
-        conditions = ["extracted_aspects ? %s"]
-        params = [aspect_name]
-        
-        if query:
-            conditions.append("extracted_aspects::text ILIKE %s")
-            params.append(f"%{query}%")
-        
-        params.append(k)
-        
-        with self.db._get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(f'''
-                    SELECT id, filename, format, extracted_aspects->>%s as aspect_data,
-                           metadata
-                    FROM documents_enhanced
-                    WHERE {' AND '.join(conditions)}
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                ''', [aspect_name] + params)
-                
-                results = cursor.fetchall()
-                return [{
-                    "id": row[0],
-                    "filename": row[1],
-                    "format": row[2],
-                    "aspect_data": json.loads(row[3]) if row[3] else {},
-                    "metadata": row[4]
-                } for row in results]
-
-    def extract_custom_concepts(self, doc_id: str, custom_concepts: List[Dict]) -> Dict:
-        """Extract custom concepts from an existing document"""
-        if not self.embeddings_available:
-            raise ConnectionError("ContextGem not available")
-        
-        # Get document
-        doc_data = self.get_document(doc_id)
-        if not doc_data:
-            raise ValueError(f"Document {doc_id} not found")
-        
-        # Create ContextGem document
-        cg_doc = Document(raw_text=doc_data["content"])
-        
-        # Add custom concepts
-        concepts = []
-        for concept_def in custom_concepts:
-            concept_type = concept_def.get("type", "string")
-            if concept_type == "string":
-                concept = StringConcept(
-                    name=concept_def["name"],
-                    description=concept_def["description"],
-                    add_references=True,
-                    reference_depth="sentences"
-                )
-            elif concept_type == "json":
-                concept = JsonObjectConcept(
-                    name=concept_def["name"],
-                    description=concept_def["description"],
-                    structure=concept_def.get("structure", {}),
-                    add_references=True,
-                    reference_depth="sentences"
-                )
-            elif concept_type == "date":
-                concept = DateConcept(
-                    name=concept_def["name"],
-                    description=concept_def["description"],
-                    add_references=True,
-                    reference_depth="sentences"
-                )
-            elif concept_type == "number":
-                concept = NumericalConcept(
-                    name=concept_def["name"],
-                    description=concept_def["description"],
-                    numeric_type=concept_def.get("numeric_type", "float"),
-                    add_references=True,
-                    reference_depth="sentences"
-                )
-            else:
-                concept = StringConcept(
-                    name=concept_def["name"],
-                    description=concept_def["description"],
-                    add_references=True,
-                    reference_depth="sentences"
-                )
-            concepts.append(concept)
-        
-        cg_doc.add_concepts(concepts)
-        
-        # Extract
-        extracted_doc = self.llm.extract_all(cg_doc, use_concurrency=True)
-        
-        # Format results
-        results = {}
-        for concept in extracted_doc.concepts:
-            results[concept.name] = {
-                "items": [
-                    {
-                        "value": item.value,
-                        "references": getattr(item, 'reference_sentences', []),
-                        "justification": getattr(item, 'justification', None)
-                    }
-                    for item in concept.extracted_items
-                ]
-            }
-        
-        return results
-
     def get_retriever(self):
-        """Return a retriever compatible with LangChain's interface"""
-        from langchain_core.retrievers import BaseRetriever
-        from langchain_core.callbacks import CallbackManagerForRetrieverRun
-        from langchain_core.documents import Document as LangchainDocument
+        logger.warning("Retriever functionality not fully adapted yet.")
+        if not LLAMA_INDEX_AVAILABLE_VM: return None # Or some default retriever
+        # This would need significant rework if embeddings are not from ContextGem
+        from llama_index.core.schema import Document as LlamaIndexDocument
+        from llama_index.core.vector_stores import SimpleVectorStore
+        from llama_index.core import StorageContext, VectorStoreIndex
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding # Example
+
+        # This is a placeholder and needs proper embedding model integration
+        # If ContextGem was handling embeddings, and self.llm is None, this will fail.
+        # If GGUF is selected, a separate embedding model needs to be used.
+        try:
+            # Example: using a HuggingFace embedding model if GGUF is selected
+            # This should be configurable.
+            embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        except Exception as e:
+            logger.error(f"Failed to load embedding model for retriever: {e}")
+            return None
+
+        all_docs_data = self.list_documents()
+        llama_idx_docs = [LlamaIndexDocument(text=doc.get('processed_content',''), metadata={'doc_id': doc.get('id'), 'filename': doc.get('filename')}) for doc in all_docs_data if doc.get('processed_content')]
         
-        class ContextGemRetriever(BaseRetriever):
-            def __init__(self, vector_manager):
-                self.vector_manager = vector_manager
-                super().__init__()
-            
-            def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun):
-                results = self.vector_manager.concept_search(query)
-                documents = []
-                
-                for doc in results:
-                    # Create metadata from extracted concepts
-                    metadata = {
-                        "id": doc["id"],
-                        "filename": doc["filename"],
-                        "format": doc["format"],
-                        "relevance": doc.get("relevance", 0.0)
-                    }
-                    
-                    # Add concept summaries to metadata
-                    if doc.get("extracted_concepts"):
-                        concepts = doc["extracted_concepts"]
-                        for concept_name, concept_data in concepts.items():
-                            if concept_data.get("items"):
-                                metadata[f"concept_{concept_name.lower().replace(' ', '_')}"] = concept_data["items"][0]["value"]
-                    
-                    # Get document content
-                    full_doc = self.vector_manager.get_document(doc["id"])
-                    content = full_doc["content"] if full_doc else ""
-                    
-                    documents.append(LangchainDocument(
-                        page_content=content,
-                        metadata=metadata
-                    ))
-                
-                return documents
-        
-        return ContextGemRetriever(self)
+        if not llama_idx_docs: return None
+
+        vector_store = SimpleVectorStore()
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        index = VectorStoreIndex(llama_idx_docs, storage_context=storage_context, embed_model=embed_model)
+        return index.as_retriever(similarity_top_k=k)
 
     def get_stats(self) -> Dict:
-        """Get statistics about stored documents and extracted concepts"""
+        # (Content of get_stats from previous version)
         with self.db._get_connection() as conn:
             with conn.cursor() as cursor:
-                # Get basic counts
                 cursor.execute("SELECT COUNT(*) FROM documents_enhanced")
-                doc_count = cursor.fetchone()[0]
-                
-                # Get format distribution
-                cursor.execute('''
-                    SELECT format, COUNT(*) 
-                    FROM documents_enhanced 
-                    GROUP BY format
-                ''')
-                format_dist = dict(cursor.fetchall())
-                
-                # Get concept statistics
-                cursor.execute('''
-                    SELECT 
-                        COUNT(*) as docs_with_concepts,
-                        AVG(jsonb_array_length(jsonb_path_query_array(extracted_concepts, '$.*[*].items'))) as avg_concepts_per_doc
-                    FROM documents_enhanced 
-                    WHERE extracted_concepts IS NOT NULL
-                ''')
-                concept_stats = cursor.fetchone()
-                
-                return {
-                    "total_documents": doc_count,
-                    "format_distribution": format_dist,
-                    "docs_with_concepts": concept_stats[0] if concept_stats else 0,
-                    "avg_concepts_per_doc": float(concept_stats[1]) if concept_stats and concept_stats[1] else 0.0,
-                    "contextgem_available": self.embeddings_available
-                }
+                total_docs = cursor.fetchone()[0]
+                # More stats can be added here
+                return {"total_documents": total_docs}
+        return {"total_documents": 0}

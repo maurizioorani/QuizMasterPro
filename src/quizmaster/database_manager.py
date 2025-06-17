@@ -9,19 +9,26 @@ load_dotenv()
 
 class DatabaseManager:
     def __init__(self):
+        # Provide defaults based on docker-compose.yml if env vars are not set
         self.conn_params = {
             'host': 'localhost' if os.getenv('RUNNING_IN_DOCKER') != 'true' else 'db',
-            'port': os.getenv('DB_PORT'),
-            'database': os.getenv('DB_NAME'),
-            'user': os.getenv('DB_USER'),
-            'password': os.getenv('DB_PASSWORD')
+            'port': os.getenv('DB_PORT', '5432'),
+            'database': os.getenv('DB_NAME', 'quizdb'),
+            'user': os.getenv('DB_USER', 'quizmaster'),
+            'password': os.getenv('DB_PASSWORD', 'quizpass')
         }
+        print(f"Database connection params: host={self.conn_params['host']}, port={self.conn_params['port']}, database={self.conn_params['database']}, user={self.conn_params['user']}")
         try:
             self._create_tables()
         except psycopg2.OperationalError as e:
             if "could not translate host name" in str(e):
                 print("Warning: Could not connect to database. Is the PostgreSQL container running?")
                 print("Run 'docker-compose up -d' to start the database container")
+            else:
+                print(f"Database connection error: {str(e)}")
+            raise
+        except Exception as e:
+            print(f"Unexpected database error: {str(e)}")
             raise
 
     def _get_connection(self):
@@ -118,13 +125,9 @@ class DatabaseManager:
                         
                         # Determine correctness based on question type
                         is_correct = 0
-                        if q['type'] == "Multiple Choice":
-                            correct_option = next((opt for opt in q['options'] if opt['letter'] == correct_answer), None)
-                            is_correct = 1 if correct_option and user_answer == correct_option['text'] else 0
-                        elif q['type'] == "True/False":
-                            is_correct = 1 if str(user_answer).lower() == str(correct_answer).lower() else 0
-                        elif q['type'] == "Fill-in-the-Blank":
-                            is_correct = 1 if str(user_answer).strip().lower() == str(correct_answer).strip().lower() else 0
+                        # Only Multiple Choice questions remain
+                        correct_option = next((opt for opt in q['options'] if opt['letter'] == correct_answer), None)
+                        is_correct = 1 if correct_option and user_answer == correct_option['text'] else 0
                         
                         cursor.execute('''
                             INSERT INTO quiz_answers (
@@ -169,11 +172,15 @@ class DatabaseManager:
         Returns:
             int: ID of the saved quiz
         """
-        with self._get_connection() as conn:
-            with conn.cursor() as cursor:
-                # Force serialization to JSON string
-                try:
-                    serialized_data = json.dumps(quiz_data)
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Force serialization to JSON string
+                    try:
+                        serialized_data = json.dumps(quiz_data)
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(f"Failed to serialize quiz data: {str(e)}")
+                    
                     cursor.execute('''
                         INSERT INTO saved_quizzes (title, description, quiz_data, tags)
                         VALUES (%s, %s, %s, %s)
@@ -184,11 +191,13 @@ class DatabaseManager:
                         serialized_data,
                         tags if tags else []
                     ))
-                except (TypeError, ValueError) as e:
-                    raise ValueError(f"Failed to serialize quiz data: {str(e)}")
-                quiz_id = cursor.fetchone()[0]
-                conn.commit()
-                return quiz_id
+                    quiz_id = cursor.fetchone()[0]
+                    conn.commit()
+                    return quiz_id
+        except psycopg2.Error as e:
+            raise Exception(f"Database error while saving quiz: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Unexpected error while saving quiz: {str(e)}")
     
     def get_saved_quiz(self, quiz_id):
         """
@@ -280,3 +289,13 @@ class DatabaseManager:
                 result = cursor.fetchone()
                 conn.commit()
                 return result is not None
+    
+    def test_connection(self):
+        """Test database connection and return status message."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    return True, "Database connection successful"
+        except Exception as e:
+            return False, f"Database connection failed: {str(e)}"

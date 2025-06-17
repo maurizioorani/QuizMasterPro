@@ -598,17 +598,8 @@ SPECIFIC QUESTION ANALYSIS:
             
         correct_answer = question.get('correct_answer', '')
         q_type = question.get('type', 'multiple_choice')
-        
-        if q_type in ['multiple_choice', 'true_false']:
-            return str(user_answer).strip().lower() == str(correct_answer).strip().lower()
-        elif q_type == 'fill_blank':
-            # More flexible matching for fill-in-the-blank
-            user_words = str(user_answer).strip().lower().split()
-            correct_words = str(correct_answer).strip().lower().split()
-            return any(word in correct_words for word in user_words) if user_words else False
-        else:
-            # For open-ended questions, we can't automatically determine correctness
-            return False
+          # Only multiple choice questions remain
+        return str(user_answer).strip().lower() == str(correct_answer).strip().lower()
     
     def _extract_question_topic(self, question: Dict) -> str:
         """Extract meaningful topic from question for analysis"""
@@ -792,7 +783,7 @@ SPECIFIC QUESTION ANALYSIS:
             indicators['visual_learner_indicator'] = (visual_performance / visual_total) > 0.7
         
         # Analytical learner indicators
-        analytical_types = ['fill_blank', 'open_ended']
+        analytical_types = []  # No analytical question types remain
         analytical_performance = sum(type_performance.get(t, {}).get('correct', 0) for t in analytical_types)
         analytical_total = sum(type_performance.get(t, {}).get('answered', 0) for t in analytical_types)
         
@@ -1196,13 +1187,10 @@ def generate_insights(questions, model_name: str):
     # Convert legacy format to new format
     user_answers = {}
     for i, q in enumerate(questions):
-        user_answers[str(i)] = q.get('user_answer')
-        # Ensure is_correct is set
+        user_answers[str(i)] = q.get('user_answer')        # Ensure is_correct is set
         if 'is_correct' not in q and 'user_answer' in q and 'correct_answer' in q:
-            if q.get('type') in ['multiple_choice', 'true_false']:
-                q['is_correct'] = str(q['user_answer']).strip().lower() == str(q['correct_answer']).strip().lower()
-            else:
-                q['is_correct'] = False  # Can't auto-determine for open-ended
+            # All questions can be automatically evaluated now
+            q['is_correct'] = str(q['user_answer']).strip().lower() == str(q['correct_answer']).strip().lower()
     
     # Create basic insights generator
     insights_gen = InsightsGenerator()

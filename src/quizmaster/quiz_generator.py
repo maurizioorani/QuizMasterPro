@@ -6,7 +6,7 @@ from .helpers import is_question_unique, distribute_questions, parse_json_respon
 from .context_manager import ContextManager
 from .quiz_result import QuizResult
 from .config import QuizConfig
-from .schemas import MCQ_SCHEMA, OPEN_ENDED_SCHEMA, TRUE_FALSE_SCHEMA, FILL_BLANK_SCHEMA
+from .schemas import MCQ_SCHEMA
 from .prompts import get_question_prompt # Import the function
 
 # Configure logging
@@ -24,10 +24,9 @@ class QuizGenerator:
         self.current_model = self.config.current_model
         self.openai_models = self.config.openai_models
         self.MCQ_SCHEMA = MCQ_SCHEMA
-        self.OPEN_ENDED_SCHEMA = OPEN_ENDED_SCHEMA
-        self.TRUE_FALSE_SCHEMA = TRUE_FALSE_SCHEMA
-        self.FILL_BLANK_SCHEMA = FILL_BLANK_SCHEMA
 
+
+        
     def generate_quiz(self, processed_content: Dict, question_types: List[str],
                       num_questions: int, difficulty: str, focus_topics: Optional[List[str]] = None) -> Dict:
         """Generate quiz questions using ContextGem extracted data."""
@@ -91,7 +90,9 @@ class QuizGenerator:
         questions = []
         generated_count = 0
         failed_count = 0
-        # used_context_indices = set() # This variable is unused
+        
+        # Create single context manager instance to track used contexts
+        context_manager = ContextManager(context_data)
         
         question_pool = []
         for question_type, count in distribute_questions(question_types, num_questions).items():
@@ -104,8 +105,13 @@ class QuizGenerator:
         logger.info(f"Question pool size: {len(question_pool)}")
 
         attempts = 0
-        max_attempts = num_questions * 6
-
+        # OPTIMIZATION: Reduce max attempts for better speed
+        max_attempts = num_questions * 3  # Reduced from 6 to 3
+        
+        # Add success tracking for adaptive retry
+        consecutive_failures = 0
+        max_consecutive_failures = 2
+        
         logger.info(f"Starting question generation loop. Target: {num_questions}, Max attempts: {max_attempts}")
         
         while len(questions) < num_questions and attempts < max_attempts:
@@ -113,7 +119,6 @@ class QuizGenerator:
             logger.info(f"Attempt {attempts + 1}/{max_attempts}: Generating {question_type} question.")
             
             try:
-                context_manager = ContextManager(context_data)
                 selected_context = context_manager.select_relevant_context(question_type, focus_topics)
                 
                 question = self._generate_question_with_context(
@@ -121,42 +126,53 @@ class QuizGenerator:
                 )
 
                 if question:
-                    logger.info(f"Successfully generated a question (type: {question.get('type', 'N/A')}). Checking uniqueness.")
+                    logger.info(f"Successfully generated a question (type: {question.get('type', 'N/A')}). Question text: '{question.get('text', 'N/A')[:100]}...'")
+                    logger.info(f"Checking uniqueness against {len(questions)} existing questions")
                     if is_question_unique(question, questions):
                         questions.append(question)
                         generated_count += 1
-                        logger.info(f"Question added. Total generated: {generated_count}/{num_questions}")
+                        consecutive_failures = 0  # Reset failure counter
+                        logger.info(f"Question added successfully. Total generated: {generated_count}/{num_questions}")
                     else:
                         failed_count += 1
-                        logger.warning(f"Duplicate question skipped: {question.get('text', 'N/A')[:50]}...")
+                        consecutive_failures += 1
+                        logger.warning(f"Duplicate/similar question skipped: {question.get('text', 'N/A')[:50]}...")
                 else:
                     failed_count += 1
+                    consecutive_failures += 1
                     logger.warning(f"Failed to generate {question_type} question (attempt {attempts + 1})")
+                
+                # OPTIMIZATION: Break early if too many consecutive failures
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.warning(f"Breaking due to {consecutive_failures} consecutive failures")
+                    break
                     
             except Exception as e:
                 failed_count += 1
+                consecutive_failures += 1
                 logger.error(f"Error generating question (attempt {attempts + 1}): {str(e)}", exc_info=True)
                 
             attempts += 1
             
         logger.info(f"Question generation loop finished. Generated: {len(questions)}, Failed: {failed_count}, Attempts: {attempts}")
-
+        
         if len(questions) < num_questions:
             remaining = num_questions - len(questions)
-            logger.warning(f"Generating {remaining} additional questions with any available context")
+            logger.warning(f"Generating {remaining} additional questions with relaxed constraints")
             
-            for _ in range(remaining): # Use _ if i is not used
+            # Use simpler approach for remaining questions
+            for _ in range(min(remaining, 3)):  # Limit additional attempts to 3
                 try:
                     context_manager = ContextManager(context_data)
-                    # Pass focus_section=None explicitly if not using it here
-                    selected_context = context_manager.select_relevant_context(random.choice(question_types), focus_topics=focus_topics if len(questions) < num_questions // 2 else None) # Apply focus more to initial questions
+                    # Use any available context for remaining questions
+                    selected_context = context_manager.select_relevant_context(random.choice(question_types), focus_topics=None)
                     
                     q_type = random.choice(question_types)
                     question = self._generate_question_with_context(
                         selected_context, q_type, difficulty
                     )
                     
-                    if question and is_question_unique(question, questions):
+                    if question and is_question_unique(question, questions, similarity_threshold=0.75):  # More lenient similarity
                         questions.append(question)
                         generated_count += 1
                     else:
@@ -184,19 +200,46 @@ class QuizGenerator:
         ).to_dict()
 
     def _generate_question_with_context(self, context: str, question_type: str, difficulty: str) -> Optional[Dict]:
-        """Generate a single question based on context."""
-        if not context or not context.strip(): # Added check for None or empty context
+        """Generate a single question based on context with enhanced error handling."""
+        if not context or not context.strip():
             logger.warning("Context is empty or None, cannot generate question.")
             return None
 
-        prompt = get_question_prompt(question_type, difficulty, context) # Call the imported function
+        prompt = get_question_prompt(question_type, difficulty, context)
         
         logger.info(f"Prompt for LLM (snippet): {prompt[:500]}...")
-        response = self.llm_manager.make_llm_request(prompt, self.current_model, self.openai_models, max_tokens=800)
-        logger.info(f"Raw LLM response: {response}")
-
+        
+        # Use model-specific parameters for better JSON generation
+        current_model = self.llm_manager.get_current_model()
+        if current_model in self.config.openai_models:
+            # For OpenAI models, use more tokens and lower temperature with slight randomization
+            max_tokens = 1000
+            base_temp = self.config.openai_structured_temperature
+            # Add small random variation to prevent identical outputs
+            temperature = base_temp + random.uniform(-0.05, 0.05)
+            temperature = max(0.0, min(1.0, temperature))  # Clamp to valid range
+        else:
+            # For other models, use standard settings with randomization
+            max_tokens = 800
+            base_temp = self.config.structured_output_temperature
+            temperature = base_temp + random.uniform(-0.1, 0.1)
+            temperature = max(0.0, min(1.0, temperature))  # Clamp to valid range
+        
+        # Enhanced error handling with quick validation
+        response = self.llm_manager.make_llm_request(prompt, max_tokens=max_tokens, temperature=temperature)
+        logger.info(f"Raw LLM response length: {len(response) if response else 0}")
+        
         if not response:
             logger.warning("LLM request returned None.")
+            return None
+        
+        # Quick pre-validation to catch obvious issues
+        if len(response.strip()) < 50:
+            logger.warning("Response too short, likely incomplete.")
+            return None
+            
+        if response.count('{') != response.count('}'):
+            logger.warning("Unmatched braces in response, JSON likely malformed.")
             return None
         
         schema = self.get_schema_for_question_type(question_type)
@@ -204,16 +247,53 @@ class QuizGenerator:
 
         if not parsed_question:
             logger.warning("JSON parsing or validation failed.")
+            # Log the raw response for debugging (truncated)
+            logger.debug(f"Failed response: {response[:200]}...")
             return None
 
-        return self.question_formatter.format_question(question_type, parsed_question)
+        logger.info(f"Parsed question data: {parsed_question}")
+        
+        # DEBUG: Check the question formatter being used
+        logger.info(f"Using question formatter: {self.question_formatter.__class__.__name__}")
+        
+        if hasattr(self.question_formatter, 'format_question'):
+            logger.info("Formatter has format_question method")
+        else:
+            logger.error("!!! CRITICAL ERROR: Formatter missing format_question method !!!")
+            
+        # Call the format_question method with more error handling
+        try:
+            # Use the standard formatter
+            if not hasattr(self.question_formatter, 'format_question'):
+                logger.error("CRITICAL ERROR: question_formatter has no format_question method!")
+                return None
+            
+            logger.info(f"Calling standard formatter.format_question with type={question_type}")
+            formatted_question = self.question_formatter.format_question(question_type, parsed_question)
+            
+            if not formatted_question:
+                logger.warning(f"Question formatting failed for {question_type}. Parsed data: {parsed_question}")
+                
+                # Only Multiple Choice questions remain
+                logger.debug("Question details:")
+                if "question" in parsed_question:
+                    logger.debug(f"  - question field is present: {type(parsed_question['question'])}")
+                    logger.debug(f"  - question content: {parsed_question['question'][:50]}...")
+                
+                return None
+            else:
+                logger.info(f"Successfully formatted question: {formatted_question}")
+                return formatted_question
+        except Exception as e:
+            logger.error(f"Exception during question formatting: {str(e)}", exc_info=True)
+            return None
+            
+        logger.info(f"Successfully formatted question: {formatted_question.get('text', 'No text')[:50]}...")
+        return formatted_question
 
     def get_schema_for_question_type(self, question_type: str) -> Dict:
         """Returns the JSON schema for a given question type."""
         schemas = {
             "Multiple Choice": self.MCQ_SCHEMA,
-            "Open-Ended": self.OPEN_ENDED_SCHEMA,
-            "True/False": self.TRUE_FALSE_SCHEMA,
-            "Fill-in-the-Blank": self.FILL_BLANK_SCHEMA
         }
         return schemas.get(question_type, {})
